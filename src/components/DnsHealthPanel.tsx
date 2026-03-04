@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 type RecordStatus = 'PASS' | 'WARN' | 'FAIL' | 'LOADING' | 'IDLE';
 
@@ -47,12 +47,12 @@ function RecordRow({ label, status, detail }: { label: string; status: RecordSta
     );
 }
 
-export function DnsHealthPanel({ target }: { target: string }) {
+export function DnsHealthPanel({ target, onResult }: { target: string; onResult?: (r: DnsResult) => void }) {
     const [result, setResult] = useState<DnsResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const runCheck = async () => {
+    const runCheck = useCallback(async () => {
         if (!target) return;
         setLoading(true);
         setError('');
@@ -62,12 +62,19 @@ export function DnsHealthPanel({ target }: { target: string }) {
             if (!res.ok) throw new Error('DNS lookup failed');
             const data: DnsResult = await res.json();
             setResult(data);
+            onResult?.(data);
         } catch (e) {
             setError('Could not perform DNS lookup. Check your connection.');
         } finally {
             setLoading(false);
         }
-    };
+    }, [target, onResult]);
+
+
+    // Auto-run when the tab is opened with a valid target
+    useEffect(() => {
+        if (target) runCheck();
+    }, [target, runCheck]);
 
     return (
         <div style={{ width: '100%' }}>

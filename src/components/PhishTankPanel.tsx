@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface ThreatResult {
     domain: string;
@@ -10,61 +10,9 @@ interface ThreatResult {
     iocs: string[];
 }
 
-// Sample "threat feed" simulation — in production this reads from abisentry_threats.json
-// loaded via the DTI sync script
-const KNOWN_BAD_DOMAINS = new Set([
-    'evil.com', 'malware-dist.io', 'phish-bank.net', 'credential-harvest.ru',
-    'invoice-download.xyz', 'secure-update.tk', 'microsoft-verify.ml',
-]);
-
-function checkDomain(domain: string): ThreatResult {
-    const clean = domain.toLowerCase().replace(/^www\./, '');
-    const listed = KNOWN_BAD_DOMAINS.has(clean);
-
-    if (listed) {
-        return {
-            domain: clean,
-            listed: true,
-            sources: ['Abuse.ch MalwareBazaar', 'PhishStats'],
-            severity: 'MALICIOUS',
-            iocs: [
-                `Domain ${clean} matches 3 known phishing campaigns`,
-                'Associated IP ranges flagged by URLhaus',
-                'Seen in recent credential-harvesting campaigns',
-            ],
-        };
-    }
-
-    // Heuristic checks for suspicious patterns
-    const suspicious =
-        /[0-9]{4,}/.test(clean) ||
-        clean.includes('-secure') ||
-        clean.includes('-verify') ||
-        clean.includes('-login') ||
-        clean.includes('microsoft') ||
-        clean.includes('paypal') ||
-        clean.includes('account-');
-
-    if (suspicious) {
-        return {
-            domain: clean,
-            listed: false,
-            sources: ['Heuristic Analysis'],
-            severity: 'SUSPICIOUS',
-            iocs: [
-                'Domain pattern matches typosquatting / brand impersonation heuristics',
-                'Not confirmed malicious — manual review recommended',
-            ],
-        };
-    }
-
-    return {
-        domain: clean,
-        listed: false,
-        sources: [],
-        severity: 'CLEAN',
-        iocs: [],
-    };
+interface ThreatFeed {
+    malicious_domains: string[];
+    phishing_indicators: { pattern: string; type: string }[];
 }
 
 const SEVERITY_CONFIG = {
@@ -73,21 +21,63 @@ const SEVERITY_CONFIG = {
     MALICIOUS: { color: '#ff3c3c', bg: 'rgba(255,60,60,0.08)', border: 'rgba(255,60,60,0.25)', icon: '🚨', label: 'MALICIOUS' },
 };
 
-export function PhishTankPanel({ target }: { target: string }) {
+export function PhishTankPanel({ target, onResult }: { target: string; onResult?: (r: ThreatResult) => void }) {
     const [result, setResult] = useState<ThreatResult | null>(null);
     const [loading, setLoading] = useState(false);
+    const [feed, setFeed] = useState<ThreatFeed | null>(null);
 
-    const runCheck = () => {
+    // Initial load of the threat feed
+    useEffect(() => {
+        fetch('/abisentry_threats.json')
+            .then(res => res.json())
+            .then(setFeed)
+            .catch(() => console.error("DTI: Failed to load threat feed"));
+    }, []);
+
+    const runCheck = useCallback(() => {
         if (!target) return;
         setLoading(true);
         setResult(null);
-        // Simulate async lookup
+
+        // Process in a timeout to feel "live" even if local
         setTimeout(() => {
-            const domain = target.includes('@') ? target.split('@')[1] : target;
-            setResult(checkDomain(domain));
+            const domain = (target.includes('@') ? target.split('@')[1] : target).toLowerCase();
+            let res: ThreatResult = {
+                domain,
+                listed: false,
+                sources: [],
+                severity: 'CLEAN',
+                iocs: []
+            };
+
+            if (feed) {
+                // Check malicious domains
+                if (feed.malicious_domains.includes(domain)) {
+                    res.listed = true;
+                    res.sources.push('AbiSentry DTI (Consolidated Feeds)');
+                    res.severity = 'MALICIOUS';
+                    res.iocs.push(`Direct match in active malicious domain list`);
+                }
+
+                // Check heuristic patterns
+                for (const indicator of feed.phishing_indicators) {
+                    if (domain.includes(indicator.pattern)) {
+                        res.severity = res.severity === 'MALICIOUS' ? 'MALICIOUS' : 'SUSPICIOUS';
+                        res.sources.push('Heuristic Analysis');
+                        res.iocs.push(`Pattern match: ${indicator.pattern} (${indicator.type})`);
+                    }
+                }
+            }
+
+            setResult(res);
+            onResult?.(res);
             setLoading(false);
-        }, 900);
-    };
+        }, 800);
+    }, [target, feed, onResult]);
+
+    useEffect(() => {
+        if (target && feed) runCheck();
+    }, [target, feed, runCheck]);
 
     return (
         <div style={{ width: '100%' }}>
@@ -113,14 +103,14 @@ export function PhishTankPanel({ target }: { target: string }) {
 
             {!result && !loading && (
                 <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#374151', fontSize: '0.9rem' }}>
-                    Click "Check Threat Feeds" to cross-reference domain against active threat intelligence.
+                    {feed ? 'Click "Check Threat Feeds" to perform lookup.' : 'Loading threat intelligence feed...'}
                 </div>
             )}
 
             {loading && (
                 <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#4b5563', fontSize: '0.9rem' }}>
                     <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>🔍</div>
-                    Querying Abuse.ch, PhishStats, URLhaus…
+                    Querying Consolidated Threat Databases…
                 </div>
             )}
 
@@ -128,7 +118,6 @@ export function PhishTankPanel({ target }: { target: string }) {
                 const cfg = SEVERITY_CONFIG[result.severity];
                 return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {/* Verdict */}
                         <div style={{
                             padding: '1.5rem', borderRadius: '0.75rem',
                             background: cfg.bg, border: `1px solid ${cfg.border}`,
@@ -143,7 +132,6 @@ export function PhishTankPanel({ target }: { target: string }) {
                             </div>
                         </div>
 
-                        {/* IOCs */}
                         {result.iocs.length > 0 && (
                             <div style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '0.75rem', overflow: 'hidden' }}>
                                 <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -156,16 +144,6 @@ export function PhishTankPanel({ target }: { target: string }) {
                                     </div>
                                 ))}
                             </div>
-                        )}
-
-                        {/* Sources */}
-                        {result.sources.length > 0 && (
-                            <p style={{ color: '#4b5563', fontSize: '0.78rem' }}>
-                                Sources: {result.sources.map(s => <span key={s} style={{
-                                    display: 'inline-block', padding: '2px 8px', marginRight: '6px',
-                                    background: 'rgba(255,255,255,0.05)', borderRadius: '4px', color: '#9ca3af'
-                                }}>{s}</span>)}
-                            </p>
                         )}
                     </div>
                 );

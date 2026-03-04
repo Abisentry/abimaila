@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-
 const MOCK_THREATS = [
     "🔴 New Emotet payload detected at malicious-downloads.io",
     "⚠️ Phishing campaign targeting Microsoft 365 credentials",
@@ -13,8 +11,6 @@ const MOCK_THREATS = [
 ];
 
 export function LiveTicker() {
-    const marqueeRef = useRef<HTMLDivElement>(null);
-
     return (
         <div style={{
             width: '100%', background: '#0a0d12',
@@ -46,7 +42,7 @@ export function LiveTicker() {
             </div>
 
             {/* Marquee track */}
-            <div ref={marqueeRef} style={{
+            <div style={{
                 display: 'flex', alignItems: 'center', gap: '0',
                 animation: 'marquee 40s linear infinite',
                 paddingLeft: '140px'

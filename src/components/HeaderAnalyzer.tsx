@@ -97,7 +97,7 @@ const SEVERITY_STYLES = {
     low: { bg: 'rgba(100,200,255,0.08)', border: 'rgba(100,200,255,0.3)', text: '#64c8ff', icon: '🔵' },
 };
 
-export function HeaderAnalyzer() {
+export function HeaderAnalyzer({ target }: { target?: string }) {
     const [raw, setRaw] = useState('');
     const [analysis, setAnalysis] = useState<HeaderAnalysis | null>(null);
 
@@ -112,6 +112,18 @@ export function HeaderAnalyzer() {
             <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
                 Paste raw email headers to detect routing anomalies, Reply-To discrepancies, and spoofing indicators.
             </p>
+
+            {target && (
+                <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                    padding: '6px 14px', borderRadius: '99px', marginBottom: '1rem',
+                    background: 'rgba(0,210,255,0.07)', border: '1px solid rgba(0,210,255,0.2)',
+                    fontSize: '0.8rem',
+                }}>
+                    <span style={{ color: '#4b5563' }}>Analyzing headers for:</span>
+                    <span style={{ color: 'var(--color-accent-blue)', fontFamily: 'monospace', fontWeight: 600 }}>{target}</span>
+                </div>
+            )}
 
             <textarea
                 placeholder={`Paste raw email headers here...\n\nFrom: sender@example.com\nReply-To: attacker@evil.com\nReceived: from mx.evil.com...`}

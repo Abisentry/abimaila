@@ -1,8 +1,31 @@
 'use client';
 
-import Image from 'next/image';
+type Tab = 'overview' | 'dns' | 'headers' | 'phishtank';
 
-export function Navbar() {
+const NAV_LINKS: { label: string; tab: Tab }[] = [
+    { label: 'DNS Health', tab: 'dns' },
+    { label: 'Payload Sim', tab: 'overview' },
+    { label: 'Header Analyzer', tab: 'headers' },
+    { label: 'PhishTank', tab: 'phishtank' },
+];
+
+export function Navbar({
+    hasResults,
+    onTabChange,
+}: {
+    hasResults?: boolean;
+    onTabChange?: (tab: Tab) => void;
+}) {
+    const handleClick = (tab: Tab) => {
+        if (hasResults && onTabChange) {
+            onTabChange(tab);
+        } else {
+            // Pre-scan: scroll down to the feature grid
+            const el = document.getElementById('feature-grid');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }
+    };
+
     return (
         <nav style={{
             position: 'sticky', top: 0, zIndex: 50,
@@ -28,16 +51,20 @@ export function Navbar() {
 
             {/* Nav Links */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-                {['DNS Health', 'Payload Sim', 'Header Analyzer', 'PhishTank'].map(link => (
-                    <a key={link} href="#" style={{
-                        color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none',
-                        transition: 'color 0.2s'
-                    }}
+                {NAV_LINKS.map(link => (
+                    <button
+                        key={link.label}
+                        onClick={() => handleClick(link.tab)}
+                        style={{
+                            background: 'none', border: 'none', padding: 0,
+                            color: '#6b7280', fontSize: '0.875rem', cursor: 'pointer',
+                            transition: 'color 0.2s', fontFamily: 'inherit',
+                        }}
                         onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
                         onMouseLeave={e => (e.currentTarget.style.color = '#6b7280')}
                     >
-                        {link}
-                    </a>
+                        {link.label}
+                    </button>
                 ))}
             </div>
 
