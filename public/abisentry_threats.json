@@ -1,0 +1,73 @@
+{
+    "generated": "2026-03-03T20:00:00.000Z",
+    "version": "1.0.0",
+    "description": "AbiSentry DTI Engine — Processed threat indicators from Abuse.ch, URLhaus, PhishStats",
+    "malicious_domains": [
+        "evil.com",
+        "malware-dist.io",
+        "phish-bank.net",
+        "credential-harvest.ru",
+        "invoice-download.xyz",
+        "secure-update.tk",
+        "microsoft-verify.ml",
+        "paypal-login-secure.com",
+        "account-update-required.net",
+        "docs-google-drive.xyz"
+    ],
+    "malicious_urls": [
+        "https://malware-dist.io/payload/download",
+        "https://evil.com/payload.exe",
+        "https://phish-bank.net/signin",
+        "https://invoice-download.xyz/invoice_2026.exe",
+        "http://secure-update.tk/update.bat"
+    ],
+    "malicious_hashes": [
+        "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+        "cf8bd9dfddff007f75adf4c2be48005cea317c62",
+        "d41d8cd98f00b204e9800998ecf8427e"
+    ],
+    "phishing_indicators": [
+        {
+            "pattern": "microsoft-verify",
+            "confidence": 0.9,
+            "type": "brand_impersonation"
+        },
+        {
+            "pattern": "paypal-login",
+            "confidence": 0.95,
+            "type": "brand_impersonation"
+        },
+        {
+            "pattern": "account-update-required",
+            "confidence": 0.85,
+            "type": "urgency_lure"
+        },
+        {
+            "pattern": "invoice-download",
+            "confidence": 0.8,
+            "type": "malware_delivery"
+        },
+        {
+            "pattern": "secure-update",
+            "confidence": 0.75,
+            "type": "malware_delivery"
+        }
+    ],
+    "sources": [
+        {
+            "name": "Abuse.ch MalwareBazaar",
+            "url": "https://bazaar.abuse.ch/export/json/recent/",
+            "last_synced": "2026-03-03T18:00:00.000Z"
+        },
+        {
+            "name": "URLhaus",
+            "url": "https://urlhaus-api.abuse.ch/v1/urls/recent/",
+            "last_synced": "2026-03-03T18:00:00.000Z"
+        },
+        {
+            "name": "PhishStats",
+            "url": "https://phishstats.info/phish_score.csv",
+            "last_synced": "2026-03-03T18:00:00.000Z"
+        }
+    ]
+}
