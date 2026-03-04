@@ -1,5 +1,7 @@
 'use client';
 
+import Image from 'next/image';
+
 type Tab = 'overview' | 'dns' | 'headers' | 'phishtank';
 
 const NAV_LINKS: { label: string; tab: Tab }[] = [
@@ -37,16 +39,14 @@ export function Navbar({
         }}>
             {/* Logo */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{
-                    width: '32px', height: '32px', borderRadius: '8px',
-                    background: 'linear-gradient(135deg, var(--color-accent-teal), var(--color-accent-blue))',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '16px', fontWeight: 900, color: '#000'
-                }}>A</div>
-                <span style={{ fontWeight: 700, fontSize: '1rem', color: '#fff', letterSpacing: '-0.02em' }}>
-                    Abi<span style={{ color: 'var(--color-accent-teal)' }}>Mail</span>{' '}
-                    <span style={{ color: 'var(--color-accent-blue)', opacity: 0.85 }}>Secure</span>
-                </span>
+                <Image
+                    src="/abisentry_logo.png"
+                    alt="Abisentry Technologies Logo"
+                    width={120}
+                    height={36}
+                    style={{ objectFit: 'contain' }}
+                    priority
+                />
             </div>
 
             {/* Nav Links */}

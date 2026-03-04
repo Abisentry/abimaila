@@ -1,0 +1,3 @@
+module.exports=[27572,a=>{"use strict";var b=a.i(7997);function c({children:a}){return(0,b.jsx)("html",{lang:"en",children:(0,b.jsx)("body",{className:"antialiased min-h-screen flex flex-col selection:bg-accent-blue selection:text-black",children:(0,b.jsx)("main",{className:"flex-1 flex flex-col",children:a})})})}a.s(["default",()=>c,"metadata",0,{title:"AbiMail Secure | Security Diagnostic Tool",description:"Evaluate your domain and gateway resilience instantly."}])}];
+
+//# sourceMappingURL=src_app_layout_tsx_cc8184fa._.js.map

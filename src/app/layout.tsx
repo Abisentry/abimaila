@@ -4,6 +4,9 @@ import './globals.css';
 export const metadata: Metadata = {
     title: 'AbiMail Secure | Security Diagnostic Tool',
     description: 'Evaluate your domain and gateway resilience instantly.',
+    icons: {
+        icon: '/abisentry_logo.png',
+    },
 };
 
 export default function RootLayout({
