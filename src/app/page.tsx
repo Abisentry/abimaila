@@ -108,22 +108,32 @@ export default function Home() {
 
         // Initialize Paystack Payment (dynamic import to prevent SSR window error)
         setIsProcessingPayment(true);
-        const { default: PaystackPop } = await import('@paystack/inline-js');
-        const paystack = new PaystackPop();
-        paystack.newTransaction({
-            key: process.env.NEXT_PUBLIC_PAYSTACK_KEY || 'pk_test_replace_with_your_paystack_public_key',
-            email: 'billing@abisentry.com', // Replace with dynamic user email if you implement auth
-            amount: 5000 * 100,             // 5000 NGN in Kobo
-            currency: 'NGN',
-            onSuccess: (transaction: any) => {
-                setHasPaid(true);
-                setIsProcessingPayment(false);
-                runPDFGeneration(); // Automatically download after payment
-            },
-            onCancel: () => {
-                setIsProcessingPayment(false);
-            }
-        });
+        try {
+            const { default: PaystackPop } = await import('@paystack/inline-js');
+            const paystack = new PaystackPop();
+            paystack.newTransaction({
+                key: process.env.NEXT_PUBLIC_PAYSTACK_KEY || 'pk_test_0000000000000000000000000000000000000000',
+                email: 'billing@abisentry.com', // Replace with dynamic user email if you implement auth
+                amount: 5000 * 100,             // 5000 NGN in Kobo
+                currency: 'NGN',
+                onSuccess: (transaction: any) => {
+                    setHasPaid(true);
+                    setIsProcessingPayment(false);
+                    runPDFGeneration(); // Automatically download after payment
+                },
+                onCancel: () => {
+                    setIsProcessingPayment(false);
+                },
+                onError: (error: any) => {
+                    setIsProcessingPayment(false);
+                    alert(`Payment gateway failed: ${error?.message || 'Unknown error'}`);
+                }
+            });
+        } catch (e) {
+            setIsProcessingPayment(false);
+            console.error('Failed to load Paystack:', e);
+            alert('Failed to load the payment gateway. Please check your internet connection or disable adblockers.');
+        }
     };
 
     return (

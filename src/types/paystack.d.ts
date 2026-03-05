@@ -10,6 +10,7 @@ declare module '@paystack/inline-js' {
             metadata?: any;
             onSuccess?: (transaction: any) => void;
             onCancel?: () => void;
+            onError?: (error: any) => void;
             onLoad?: () => void;
         }): void;
     }
