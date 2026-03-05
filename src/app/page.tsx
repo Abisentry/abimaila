@@ -113,8 +113,8 @@ export default function Home() {
             const paystack = new PaystackPop();
             paystack.newTransaction({
                 key: process.env.NEXT_PUBLIC_PAYSTACK_KEY || 'pk_test_0000000000000000000000000000000000000000',
-                email: 'billing@abisentry.com', // Replace with dynamic user email if you implement auth
-                amount: 5000 * 100,             // 5000 NGN in Kobo
+                email: 'hi@abisentrytechnologies.com', // Replace with dynamic user email if you implement auth
+                amount: 500 * 100,             // 500 NGN in Kobo
                 currency: 'NGN',
                 onSuccess: (transaction: any) => {
                     setHasPaid(true);
@@ -296,7 +296,7 @@ export default function Home() {
                                                     ) : (
                                                         <span style={{ fontSize: '1rem' }}>💳</span>
                                                     )}
-                                                    {hasPaid ? 'Download Security Report (PDF)' : 'Pay ₦5,000 to Unlock Full Report'}
+                                                    {hasPaid ? 'Download Security Report (PDF)' : 'Pay ₦500 to Unlock Full Report'}
                                                 </>
                                             )}
                                         </button>
