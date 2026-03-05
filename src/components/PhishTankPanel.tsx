@@ -81,10 +81,10 @@ export function PhishTankPanel({ target, onResult }: { target: string; onResult?
 
     return (
         <div style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '1.25rem' }}>
                 <div>
-                    <h2 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>PhishTank & Threat Intelligence</h2>
-                    <p style={{ color: '#4b5563', fontSize: '0.82rem' }}>Cross-reference against Abuse.ch, PhishStats, and URLhaus feeds</p>
+                    <h2 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>PhishTank &amp; Threat Intelligence</h2>
+                    <p style={{ color: '#4b5563', fontSize: '0.82rem', marginTop: '3px' }}>Cross-reference against Abuse.ch, PhishStats, and URLhaus feeds</p>
                 </div>
                 <button
                     onClick={runCheck}
@@ -94,7 +94,7 @@ export function PhishTankPanel({ target, onResult }: { target: string; onResult?
                         color: '#fff', fontWeight: 700, borderRadius: '99px', border: 'none',
                         cursor: loading || !target ? 'not-allowed' : 'pointer',
                         fontSize: '0.82rem', opacity: loading || !target ? 0.6 : 1,
-                        transition: 'opacity 0.2s'
+                        transition: 'opacity 0.2s', flexShrink: 0, whiteSpace: 'nowrap',
                     }}
                 >
                     {loading ? 'Querying…' : 'Check Threat Feeds'}

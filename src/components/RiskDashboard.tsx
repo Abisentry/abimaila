@@ -231,38 +231,39 @@ export function RiskDashboard({ showResults, target, dnsResult, phishResult }: {
     return (
         <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto 2rem' }}>
             <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '1rem 1.5rem', background: '#0d1117',
+                display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between',
+                alignItems: 'center', gap: '1rem',
+                padding: '1rem 1.25rem', background: '#0d1117',
                 border: '1px solid rgba(255,255,255,0.06)', borderRadius: '1rem',
-                marginBottom: '1rem'
+                marginBottom: '1rem',
             }}>
                 <div>
-                    <p style={{ color: '#4b5563', fontSize: '0.7rem', textTransform: 'uppercase' }}>Target</p>
-                    <p style={{ color: '#fff', fontWeight: 600, fontSize: '1rem' }}>{target}</p>
+                    <p style={{ color: '#4b5563', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Scanned Target</p>
+                    <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem', fontFamily: 'monospace', marginTop: '2px' }}>{target}</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                    <p style={{ color: '#4b5563', fontSize: '0.7rem', textTransform: 'uppercase' }}>Security Score</p>
+                    <p style={{ color: '#4b5563', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Security Score</p>
                     <p style={{
-                        fontSize: '2rem', fontWeight: 900,
-                        color: score === null ? '#374151' : score >= 70 ? '#00c864' : score >= 40 ? '#f5a623' : '#ff3c3c'
+                        fontSize: 'clamp(1.6rem, 4vw, 2rem)', fontWeight: 900, marginTop: '2px',
+                        color: score === null ? '#374151' : score >= 70 ? '#00c864' : score >= 40 ? '#f5a623' : '#ff3c3c',
                     }}>
                         {score !== null ? `${score}%` : '—'}
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '12px' }}>
                     {['PASS', 'WARN', 'FAIL', 'PENDING'].map(s => {
                         const count = modules.filter(m => m.status === s).length;
                         return (
-                            <div key={s} style={{ textAlign: 'center', minWidth: '40px' }}>
-                                <p style={{ color: RAG_COLORS[s as RiskStatus].text, fontSize: '1.25rem', fontWeight: 800 }}>{count}</p>
-                                <p style={{ color: '#374151', fontSize: '0.6rem' }}>{s}</p>
+                            <div key={s} style={{ textAlign: 'center', minWidth: '36px' }}>
+                                <p style={{ color: RAG_COLORS[s as RiskStatus].text, fontSize: '1.1rem', fontWeight: 800 }}>{count}</p>
+                                <p style={{ color: '#374151', fontSize: '0.58rem', letterSpacing: '0.06em' }}>{s}</p>
                             </div>
                         );
                     })}
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
                 {modules.map((m, i) => <RiskCard key={m.id} module={m} index={i} />)}
             </div>
 

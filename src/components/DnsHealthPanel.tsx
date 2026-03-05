@@ -35,12 +35,12 @@ function StatusBadge({ status }: { status: RecordStatus }) {
 function RecordRow({ label, status, detail }: { label: string; status: RecordStatus; detail: string }) {
     return (
         <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px',
             padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.04)'
         }}>
-            <div>
-                <p style={{ color: '#e5e7eb', fontSize: '0.9rem', fontWeight: 600 }}>{label}</p>
-                <p style={{ color: '#4b5563', fontSize: '0.78rem', fontFamily: 'monospace', marginTop: '2px', wordBreak: 'break-all' }}>{detail}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ color: '#e5e7eb', fontSize: '0.88rem', fontWeight: 600 }}>{label}</p>
+                <p style={{ color: '#4b5563', fontSize: '0.76rem', fontFamily: 'monospace', marginTop: '3px', wordBreak: 'break-all', lineHeight: 1.4 }}>{detail}</p>
             </div>
             <StatusBadge status={status} />
         </div>
@@ -78,10 +78,12 @@ export function DnsHealthPanel({ target, onResult }: { target: string; onResult?
 
     return (
         <div style={{ width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '1.25rem' }}>
                 <div>
                     <h2 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>DNS Health Check</h2>
-                    <p style={{ color: '#4b5563', fontSize: '0.82rem' }}>Live SPF · DKIM · DMARC lookup for <span style={{ color: 'var(--color-accent-blue)' }}>{target || '(no target)'}</span></p>
+                    <p style={{ color: '#4b5563', fontSize: '0.82rem', marginTop: '3px' }}>Live SPF · DKIM · DMARC lookup for{' '}
+                        <span style={{ color: 'var(--color-accent-blue)', fontFamily: 'monospace', fontWeight: 600 }}>{target || '(no target)'}</span>
+                    </p>
                 </div>
                 <button
                     onClick={runCheck}
@@ -91,7 +93,7 @@ export function DnsHealthPanel({ target, onResult }: { target: string; onResult?
                         color: '#000', fontWeight: 700, borderRadius: '99px', border: 'none',
                         cursor: loading || !target ? 'not-allowed' : 'pointer',
                         fontSize: '0.82rem', opacity: loading || !target ? 0.6 : 1,
-                        transition: 'opacity 0.2s', whiteSpace: 'nowrap'
+                        transition: 'opacity 0.2s', whiteSpace: 'nowrap', flexShrink: 0,
                     }}
                 >
                     {loading ? 'Checking…' : 'Run Live Check'}

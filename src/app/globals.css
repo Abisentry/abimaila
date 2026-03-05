@@ -1,4 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
+
 
 @theme {
   --color-background: #0a0c10;
@@ -6,16 +8,22 @@
   --color-accent-blue: #00d2ff;
   --color-accent-teal: #00bfa5;
   --color-card: #12151c;
-  --font-family-sans: 'Inter', sans-serif;
+  --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 @layer base {
-  * {
+
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   }
 
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
@@ -24,15 +32,30 @@
     font-family: var(--font-family-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
   }
 
   ::selection {
     background-color: var(--color-accent-blue);
     color: #000;
   }
+
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  input,
+  textarea {
+    font-family: inherit;
+  }
 }
 
-/* Custom glowing animations */
+/* Animations */
 @keyframes scan-line {
   0% {
     top: 0%;
@@ -75,9 +98,58 @@
   }
 }
 
-/* Custom Scrollbar */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -91,4 +163,15 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #2a2d38;
+}
+
+/* Mobile-first responsive helpers */
+@media (max-width: 640px) {
+
+  /* Ensure text inputs don't zoom on focus in iOS */
+  input[type="text"],
+  input[type="email"],
+  textarea {
+    font-size: 16px !important;
+  }
 }
