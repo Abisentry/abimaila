@@ -11,8 +11,14 @@ interface ThreatResult {
 }
 
 interface ThreatFeed {
+    generated?: string;
+    version?: string;
     malicious_domains: string[];
-    phishing_indicators: { pattern: string; type: string }[];
+    malicious_urls?: string[];
+    malicious_hashes?: string[];
+    phishing_indicators: { pattern: string; type: string; confidence?: number }[];
+    sources?: { name: string; url: string; last_synced: string }[];
+    stats?: { total_domains: number; total_urls: number; total_hashes: number };
 }
 
 const SEVERITY_CONFIG = {
@@ -79,9 +85,14 @@ export function PhishTankPanel({ target, onResult }: { target: string; onResult?
         if (target && feed) runCheck();
     }, [target, feed, runCheck]);
 
+    // Feed age string
+    const feedGeneratedStr = feed?.generated
+        ? new Date(feed.generated).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+        : null;
+
     return (
         <div style={{ width: '100%' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '1rem' }}>
                 <div>
                     <h2 style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>PhishTank &amp; Threat Intelligence</h2>
                     <p style={{ color: '#4b5563', fontSize: '0.82rem', marginTop: '3px' }}>Cross-reference against Abuse.ch, PhishStats, and URLhaus feeds</p>
@@ -99,6 +110,65 @@ export function PhishTankPanel({ target, onResult }: { target: string; onResult?
                 >
                     {loading ? 'Querying…' : 'Check Threat Feeds'}
                 </button>
+            </div>
+
+            {/* ── DTI Feed Status Strip ── */}
+            <div style={{
+                background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '0.75rem', padding: '0.85rem 1.1rem', marginBottom: '1.25rem',
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.65rem' }}>
+                    <span style={{
+                        width: 7, height: 7, borderRadius: '50%',
+                        background: feed ? '#00c864' : '#f59e0b', display: 'inline-block',
+                        boxShadow: `0 0 6px ${feed ? '#00c864' : '#f59e0b'}`,
+                        animation: 'dtipulse 2s ease-in-out infinite',
+                    }} />
+                    <span style={{ color: feed ? '#00c864' : '#f59e0b', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                        {feed ? 'DTI Consolidated Feeds — Active' : 'Loading Threat Intelligence Feed…'}
+                    </span>
+                    {feedGeneratedStr && (
+                        <span style={{ color: '#374151', fontSize: '0.68rem', marginLeft: 'auto' }}>
+                            Last synced: {feedGeneratedStr}
+                        </span>
+                    )}
+                </div>
+
+                {feed && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                        {/* Indicator counts */}
+                        {[
+                            { label: 'Domains', count: feed.stats?.total_domains ?? feed.malicious_domains.length, icon: '🌐' },
+                            { label: 'URLs', count: feed.stats?.total_urls ?? (feed.malicious_urls?.length ?? 0), icon: '🔗' },
+                            { label: 'Hashes', count: feed.stats?.total_hashes ?? (feed.malicious_hashes?.length ?? 0), icon: '🔐' },
+                            { label: 'Patterns', count: feed.phishing_indicators.length, icon: '🎯' },
+                        ].map(item => (
+                            <div key={item.label} style={{
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                background: 'rgba(255,255,255,0.03)',
+                                border: '1px solid rgba(255,255,255,0.06)',
+                                borderRadius: '6px', padding: '4px 10px',
+                            }}>
+                                <span style={{ fontSize: '0.75rem' }}>{item.icon}</span>
+                                <span style={{ color: '#e5e7eb', fontSize: '0.8rem', fontWeight: 700 }}>{item.count.toLocaleString()}</span>
+                                <span style={{ color: '#4b5563', fontSize: '0.72rem' }}>{item.label}</span>
+                            </div>
+                        ))}
+
+                        {/* Source pills */}
+                        {feed.sources?.map(src => (
+                            <div key={src.name} style={{
+                                display: 'flex', alignItems: 'center', gap: '5px',
+                                background: 'rgba(0,210,255,0.04)',
+                                border: '1px solid rgba(0,210,255,0.1)',
+                                borderRadius: '6px', padding: '4px 10px',
+                            }}>
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#00d2ff', display: 'inline-block' }} />
+                                <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>{src.name}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {!result && !loading && (
@@ -148,6 +218,12 @@ export function PhishTankPanel({ target, onResult }: { target: string; onResult?
                     </div>
                 );
             })()}
+            <style>{`
+                @keyframes dtipulse {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50%       { opacity: 0.4; transform: scale(0.85); }
+                }
+            `}</style>
         </div>
     );
 }
