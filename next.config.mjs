@@ -1,4 +1,15 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
+const nextConfig = {
+    webpack: (config, { isServer }) => {
+        if (!isServer) {
+            // jsPDF uses a virtual `fs` that doesn't exist in browsers
+            config.resolve.fallback = {
+                ...config.resolve.fallback,
+                fs: false,
+            };
+        }
+        return config;
+    },
+};
 
 export default nextConfig;
