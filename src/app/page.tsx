@@ -252,64 +252,128 @@ export default function Home() {
                         </div>
 
                         {/* Content */}
-                        <div style={{ animation: 'fadeUp 0.4s ease both' }}>
-                            {activeTab === 'overview' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div style={{ position: 'relative' }}>
+                            <div style={{
+                                animation: 'fadeUp 0.4s ease both',
+                                filter: !hasPaid ? 'blur(10px) grayscale(60%)' : 'none',
+                                pointerEvents: !hasPaid ? 'none' : 'auto',
+                                userSelect: !hasPaid ? 'none' : 'auto',
+                                opacity: !hasPaid ? 0.3 : 1,
+                                transition: 'all 0.5s ease',
+                                minHeight: '400px'
+                            }}>
+                                <div style={{ display: activeTab === 'overview' ? 'flex' : 'none', flexDirection: 'column', gap: '1.5rem' }}>
                                     <RiskDashboard showResults target={scannedTarget} dnsResult={dnsResult} phishResult={phishResult} />
 
-                                    {/* PDF Download Button */}
-                                    <div style={{ textAlign: 'center', paddingBottom: '1rem' }}>
-                                        <button
-                                            onClick={handleDownloadPDF}
-                                            disabled={isGeneratingPDF || isProcessingPayment}
-                                            style={{
-                                                padding: '0.8rem 2.25rem',
-                                                background: isGeneratingPDF || isProcessingPayment
-                                                    ? 'rgba(0,210,255,0.5)'
-                                                    : hasPaid
-                                                        ? 'linear-gradient(135deg, #00c864, #00bfa5)'
-                                                        : 'linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-teal))',
-                                                color: '#000',
-                                                fontWeight: 800, borderRadius: '99px', border: 'none',
-                                                cursor: isGeneratingPDF || isProcessingPayment ? 'not-allowed' : 'pointer',
-                                                fontSize: '0.88rem',
-                                                boxShadow: isGeneratingPDF || isProcessingPayment ? 'none' : '0 4px 24px rgba(0,210,255,0.35)',
-                                                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                                                transition: 'all 0.25s',
-                                                letterSpacing: '-0.01em',
-                                            }}
-                                        >
-                                            {isGeneratingPDF || isProcessingPayment ? (
-                                                <>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
-                                                        <path d="M12 4a8 8 0 1 0 8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                                                    </svg>
-                                                    {isProcessingPayment ? 'Waiting for Payment…' : 'Generating PDF…'}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {hasPaid ? (
+                                    {/* PDF Download Button (Visible only after payment) */}
+                                    {hasPaid && (
+                                        <div style={{ textAlign: 'center', paddingBottom: '1rem' }}>
+                                            <button
+                                                onClick={handleDownloadPDF}
+                                                disabled={isGeneratingPDF}
+                                                style={{
+                                                    padding: '0.8rem 2.25rem',
+                                                    background: isGeneratingPDF
+                                                        ? 'rgba(0,210,255,0.5)'
+                                                        : 'linear-gradient(135deg, #00c864, #00bfa5)',
+                                                    color: '#000',
+                                                    fontWeight: 800, borderRadius: '99px', border: 'none',
+                                                    cursor: isGeneratingPDF ? 'not-allowed' : 'pointer',
+                                                    fontSize: '0.88rem',
+                                                    boxShadow: isGeneratingPDF ? 'none' : '0 4px 24px rgba(0,210,255,0.35)',
+                                                    display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                                    transition: 'all 0.25s',
+                                                    letterSpacing: '-0.01em',
+                                                }}
+                                            >
+                                                {isGeneratingPDF ? (
+                                                    <>
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
+                                                            <path d="M12 4a8 8 0 1 0 8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                                                        </svg>
+                                                        Generating PDF…
+                                                    </>
+                                                ) : (
+                                                    <>
                                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                                                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                                             <path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                                         </svg>
-                                                    ) : (
-                                                        <span style={{ fontSize: '1rem' }}>💳</span>
-                                                    )}
-                                                    {hasPaid ? 'Download Security Report (PDF)' : 'Pay ₦500 to Unlock Full Report'}
+                                                        Download Security Report (PDF)
+                                                    </>
+                                                )}
+                                            </button>
+                                            <p style={{ color: '#374151', fontSize: '0.72rem', marginTop: '0.5rem' }}>
+                                                Professionally formatted A4 PDF scorecard
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div style={{ display: activeTab === 'dns' ? 'block' : 'none' }}>
+                                    <DnsHealthPanel target={scannedTarget} onResult={setDnsResult} />
+                                </div>
+                                <div style={{ display: activeTab === 'phishtank' ? 'block' : 'none' }}>
+                                    <PhishTankPanel target={scannedTarget} onResult={setPhishResult} />
+                                </div>
+                                <div style={{ display: activeTab === 'headers' ? 'block' : 'none' }}>
+                                    <HeaderAnalyzer target={scannedTarget} />
+                                </div>
+                            </div>
+
+                            {/* Payment Overlay */}
+                            {!hasPaid && (
+                                <div style={{
+                                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                                    display: 'flex', flexDirection: 'column',
+                                    justifyContent: 'center', alignItems: 'center', zIndex: 10,
+                                    padding: '2rem'
+                                }}>
+                                    <div style={{ textAlign: 'center', padding: '3.5rem 2.5rem', background: '#0d1117', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '1rem', boxShadow: '0 20px 50px rgba(0,0,0,0.8)', maxWidth: '440px', width: '100%' }}>
+                                        <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>🔒</div>
+                                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '0.8rem', fontWeight: 700 }}>Diagnostics Complete</h3>
+                                        <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '2rem', lineHeight: 1.6 }}>
+                                            The scan for <strong style={{ color: '#fff' }}>{scannedTarget}</strong> is ready. Pay to unlock the interactive results dashboard and download your professional PDF scorecard.
+                                        </p>
+
+                                        <button
+                                            onClick={handleDownloadPDF}
+                                            disabled={isProcessingPayment}
+                                            style={{
+                                                padding: '0.8rem 2.25rem',
+                                                background: isProcessingPayment
+                                                    ? 'rgba(0,210,255,0.5)'
+                                                    : 'linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-teal))',
+                                                color: '#000',
+                                                fontWeight: 800, borderRadius: '99px', border: 'none', width: '100%',
+                                                cursor: isProcessingPayment ? 'not-allowed' : 'pointer',
+                                                fontSize: '0.9rem',
+                                                boxShadow: isProcessingPayment ? 'none' : '0 4px 24px rgba(0,210,255,0.35)',
+                                                display: 'inline-flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                                transition: 'all 0.25s',
+                                                letterSpacing: '-0.01em',
+                                            }}
+                                        >
+                                            {isProcessingPayment ? (
+                                                <>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
+                                                        <path d="M12 4a8 8 0 1 0 8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                                                    </svg>
+                                                    Waiting for Payment…
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span style={{ fontSize: '1.1rem' }}>💳</span>
+                                                    Pay ₦500 to Unlock
                                                 </>
                                             )}
                                         </button>
-                                        <p style={{ color: '#374151', fontSize: '0.72rem', marginTop: '0.5rem' }}>
-                                            {hasPaid ? 'Professionally formatted A4 PDF scorecard' : 'Secured via Paystack · Instant PDF Delivery'}
+                                        <p style={{ color: '#4b5563', fontSize: '0.72rem', marginTop: '1rem', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                                            Secured by Paystack
                                         </p>
                                     </div>
                                 </div>
                             )}
-
-                            {activeTab === 'dns' && <DnsHealthPanel target={scannedTarget} onResult={setDnsResult} />}
-                            {activeTab === 'phishtank' && <PhishTankPanel target={scannedTarget} onResult={setPhishResult} />}
-                            {activeTab === 'headers' && <HeaderAnalyzer target={scannedTarget} />}
                         </div>
                     </div>
                 </section>
