@@ -42,15 +42,17 @@ const nextConfig = {
                         key: 'Content-Security-Policy',
                         value: [
                             "default-src 'self'",
-                            // Next.js inline scripts + hydration
-                            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                            // Next.js inline scripts + hydration + Paystack SDK
+                            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.paystack.co",
                             // Google Fonts
                             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
                             "font-src 'self' https://fonts.gstatic.com",
-                            // Cloudflare DoH (DNS-over-HTTPS API calls from server-side route)
-                            "connect-src 'self' https://cloudflare-dns.com https://urlhaus-api.abuse.ch https://bazaar.abuse.ch https://phishstats.info",
-                            // Logo + static assets
-                            "img-src 'self' data: blob:",
+                            // External APIs + Paystack endpoints
+                            "connect-src 'self' https://cloudflare-dns.com https://urlhaus-api.abuse.ch https://bazaar.abuse.ch https://phishstats.info https://api.paystack.co https://checkout.paystack.com",
+                            // Content + Paystack Assets
+                            "img-src 'self' data: blob: https://checkout.paystack.com",
+                            // Paystack Checkout window
+                            "frame-src 'self' https://checkout.paystack.com",
                             "frame-ancestors 'none'",
                             "base-uri 'self'",
                             "form-action 'self'",
