@@ -10,6 +10,7 @@ import { PhishTankPanel } from '../components/PhishTankPanel';
 import { RiskDashboard } from '../components/RiskDashboard';
 import { HowToUse } from '../components/HowToUse';
 import { generateSecurityReport } from '../lib/generateReport';
+import PaystackPop from '@paystack/inline-js';
 
 
 type Tab = 'overview' | 'dns' | 'headers' | 'phishtank';
@@ -61,6 +62,8 @@ export default function Home() {
     const [dnsResult, setDnsResult] = useState<DnsResult | null>(null);
     const [phishResult, setPhishResult] = useState<ThreatResult | null>(null);
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+    const [hasPaid, setHasPaid] = useState(false);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
     const runAllDiagnostics = useCallback(async (target: string) => {
         const domain = target.includes('@') ? target.split('@')[1] : target;
@@ -85,16 +88,42 @@ export default function Home() {
         setActiveTab('overview');
     };
 
-    const handleDownloadPDF = async () => {
-        if (!scannedTarget) return;
+    const runPDFGeneration = async () => {
         setIsGeneratingPDF(true);
         try {
-            await downloadPDFReport(scannedTarget, dnsResult, phishResult);
+            await downloadPDFReport(scannedTarget!, dnsResult, phishResult);
         } catch (err) {
             console.error('PDF generation failed:', err);
         } finally {
             setIsGeneratingPDF(false);
         }
+    }
+
+    const handleDownloadPDF = async () => {
+        if (!scannedTarget) return;
+
+        if (hasPaid) {
+            await runPDFGeneration();
+            return;
+        }
+
+        // Initialize Paystack Payment
+        setIsProcessingPayment(true);
+        const paystack = new PaystackPop();
+        paystack.newTransaction({
+            key: process.env.NEXT_PUBLIC_PAYSTACK_KEY || 'pk_test_replace_with_your_paystack_public_key',
+            email: 'billing@abisentry.com', // Replace with dynamic user email if you implement auth
+            amount: 5000 * 100,             // 5000 NGN in Kobo
+            currency: 'NGN',
+            onSuccess: (transaction: any) => {
+                setHasPaid(true);
+                setIsProcessingPayment(false);
+                runPDFGeneration(); // Automatically download after payment
+            },
+            onCancel: () => {
+                setIsProcessingPayment(false);
+            }
+        });
     };
 
     return (
@@ -222,41 +251,47 @@ export default function Home() {
                                     <div style={{ textAlign: 'center', paddingBottom: '1rem' }}>
                                         <button
                                             onClick={handleDownloadPDF}
-                                            disabled={isGeneratingPDF}
+                                            disabled={isGeneratingPDF || isProcessingPayment}
                                             style={{
                                                 padding: '0.8rem 2.25rem',
-                                                background: isGeneratingPDF
+                                                background: isGeneratingPDF || isProcessingPayment
                                                     ? 'rgba(0,210,255,0.5)'
-                                                    : 'linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-teal))',
+                                                    : hasPaid
+                                                        ? 'linear-gradient(135deg, #00c864, #00bfa5)'
+                                                        : 'linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-teal))',
                                                 color: '#000',
                                                 fontWeight: 800, borderRadius: '99px', border: 'none',
-                                                cursor: isGeneratingPDF ? 'not-allowed' : 'pointer',
+                                                cursor: isGeneratingPDF || isProcessingPayment ? 'not-allowed' : 'pointer',
                                                 fontSize: '0.88rem',
-                                                boxShadow: isGeneratingPDF ? 'none' : '0 4px 24px rgba(0,210,255,0.35)',
+                                                boxShadow: isGeneratingPDF || isProcessingPayment ? 'none' : '0 4px 24px rgba(0,210,255,0.35)',
                                                 display: 'inline-flex', alignItems: 'center', gap: '8px',
                                                 transition: 'all 0.25s',
                                                 letterSpacing: '-0.01em',
                                             }}
                                         >
-                                            {isGeneratingPDF ? (
+                                            {isGeneratingPDF || isProcessingPayment ? (
                                                 <>
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
                                                         <path d="M12 4a8 8 0 1 0 8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                                                     </svg>
-                                                    Generating PDF…
+                                                    {isProcessingPayment ? 'Waiting for Payment…' : 'Generating PDF…'}
                                                 </>
                                             ) : (
                                                 <>
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                        <path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                    </svg>
-                                                    Download Security Report (PDF)
+                                                    {hasPaid ? (
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                            <path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                        </svg>
+                                                    ) : (
+                                                        <span style={{ fontSize: '1rem' }}>💳</span>
+                                                    )}
+                                                    {hasPaid ? 'Download Security Report (PDF)' : 'Pay ₦5,000 to Unlock Full Report'}
                                                 </>
                                             )}
                                         </button>
                                         <p style={{ color: '#374151', fontSize: '0.72rem', marginTop: '0.5rem' }}>
-                                            Professionally formatted A4 PDF scorecard
+                                            {hasPaid ? 'Professionally formatted A4 PDF scorecard' : 'Secured via Paystack · Instant PDF Delivery'}
                                         </p>
                                     </div>
                                 </div>
