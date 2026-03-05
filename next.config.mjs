@@ -1,14 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // Next.js 16 enables Turbopack by default. An explicit `turbopack` block
-    // is REQUIRED when a `webpack` config is also present, otherwise the build
-    // errors. `turbopack: {}` is enough — Turbopack automatically stubs out
-    // Node built-ins (fs, path, crypto, etc.) for browser bundles, so there
-    // is nothing to configure here.
+    // ── Turbopack (Next.js 16 default bundler) ────────────────────────────────
+    // An explicit turbopack block is required when a webpack config is also
+    // present; otherwise Next.js 16 throws a build error.
+    // Turbopack automatically stubs Node built-ins (e.g. `fs`) for browser
+    // bundles, so no resolveAlias entry is needed here.
     turbopack: {},
 
-    // Used only for non-Turbopack builds (e.g. `next build --webpack`).
-    // jsPDF references the Node `fs` module; stub it out in the browser.
+    // ── Webpack (non-Turbopack builds) ────────────────────────────────────────
     webpack: (config, { isServer }) => {
         if (!isServer) {
             config.resolve.fallback = {
@@ -17,6 +16,56 @@ const nextConfig = {
             };
         }
         return config;
+    },
+
+    // ── Security headers ──────────────────────────────────────────────────────
+    // Applied to every response. These are strong defaults for a security tool.
+    async headers() {
+        return [
+            {
+                source: '/(.*)',
+                headers: [
+                    // Prevent clickjacking
+                    { key: 'X-Frame-Options', value: 'DENY' },
+                    // Block MIME sniffing
+                    { key: 'X-Content-Type-Options', value: 'nosniff' },
+                    // Enforce HTTPS for 2 years, include subdomains
+                    { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+                    // Disable browser features not needed by the app
+                    { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()' },
+                    // Referrer: send only origin on cross-origin requests
+                    { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+                    // Remove "Powered by Next.js" server fingerprinting
+                    { key: 'X-Powered-By', value: '' },
+                    // Content Security Policy – tightened for a security-tool context
+                    {
+                        key: 'Content-Security-Policy',
+                        value: [
+                            "default-src 'self'",
+                            // Next.js inline scripts + hydration
+                            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                            // Google Fonts
+                            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                            "font-src 'self' https://fonts.gstatic.com",
+                            // Cloudflare DoH (DNS-over-HTTPS API calls from server-side route)
+                            "connect-src 'self' https://cloudflare-dns.com https://urlhaus-api.abuse.ch https://bazaar.abuse.ch https://phishstats.info",
+                            // Logo + static assets
+                            "img-src 'self' data: blob:",
+                            "frame-ancestors 'none'",
+                            "base-uri 'self'",
+                            "form-action 'self'",
+                        ].join('; '),
+                    },
+                ],
+            },
+            // Cache the static threat-feed file for 5 minutes – stale-while-revalidate
+            {
+                source: '/abisentry_threats.json',
+                headers: [
+                    { key: 'Cache-Control', value: 'public, max-age=300, stale-while-revalidate=600' },
+                ],
+            },
+        ];
     },
 };
 

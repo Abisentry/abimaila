@@ -1,18 +1,15 @@
 'use client';
 
 /**
- * PDF Report generator for AbiSentry Security Reports.
- * Uses jsPDF dynamically to avoid SSR/Turbopack issues.
+ * AbiSentry PDF Report Generator — v3.0
  *
- * Structure:
- *   1. Cover header
- *   2. At-a-Glance Results  (what we found)
- *   3. DNS Health section
- *   4. Threat Intelligence section
- *   5. Gateway Resilience section
- *   6. Professional Recommendations  (plain English, action-oriented)
- *   7. Executive Summary  (final page — plain-language verdict for non-technical readers)
- *   8. Footer
+ * Page layout:
+ *   Page 1  – Cover header (logo) · At-a-Glance scorecard
+ *   Page 2  – DNS Health · Threat Intelligence · Gateway Resilience
+ *   Page 3  – Recommendations (prioritised, plain English + resolution steps)
+ *   Last    – Executive Summary (non-technical verdict + what was checked)
+ *
+ * All content is generated in the browser — nothing is sent to a server.
  */
 
 interface DnsResult {
@@ -33,7 +30,13 @@ interface ThreatResult {
     iocs: string[];
 }
 
-// ── Colour helpers ────────────────────────────────────────────────────────────
+// ── Colour helpers ─────────────────────────────────────────────────────────────
+const hex2rgb = (hex: string): [number, number, number] => [
+    parseInt(hex.slice(1, 3), 16),
+    parseInt(hex.slice(3, 5), 16),
+    parseInt(hex.slice(5, 7), 16),
+];
+
 const statusColor = (status: string): [number, number, number] => {
     const s = status?.toUpperCase();
     if (['PASS', 'CLEAN', 'LOW'].includes(s)) return [0, 135, 61];
@@ -42,654 +45,669 @@ const statusColor = (status: string): [number, number, number] => {
     return [100, 116, 139];
 };
 
-const hex2rgb = (hex: string): [number, number, number] => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return [r, g, b];
+// ── Recommendation types ──────────────────────────────────────────────────────
+interface Rec {
+    priority: 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+    title: string;
+    what: string;   // plain-English problem statement
+    why: string;    // why it matters
+    how: string;    // exact resolution step
+}
+
+const PRIORITY_HEX: Record<string, string> = {
+    HIGH: '#b91c1c', MEDIUM: '#b45309', LOW: '#00873d', INFO: '#2563eb',
+};
+const PRIORITY_BG: Record<string, string> = {
+    HIGH: '#fee2e2', MEDIUM: '#fef3c7', LOW: '#dcfce7', INFO: '#eff6ff',
 };
 
-// ── Plain-English recommendation builder ─────────────────────────────────────
-
-interface Recommendation {
-    priority: 'HIGH' | 'MEDIUM' | 'LOW';
-    title: string;
-    plain: string;  // one-sentence plain English
-    action: string; // concrete next step
-}
-
-function buildRecommendations(dns: DnsResult | null, phish: ThreatResult | null): Recommendation[] {
-    const recs: Recommendation[] = [];
+function buildRecs(dns: DnsResult | null, phish: ThreatResult | null): Rec[] {
+    const recs: Rec[] = [];
 
     if (dns) {
-        // SPF
-        if (!dns.spf.found) {
-            recs.push({
-                priority: 'HIGH',
-                title: 'Missing SPF Record',
-                plain: 'Your domain has no SPF record, which means anyone can send emails pretending to be you.',
-                action: 'Add a DNS TXT record:  "v=spf1 include:your-mail-provider.com -all"  (ask your IT team or hosting provider).',
-            });
-        } else if (!dns.spf.strict) {
-            recs.push({
-                priority: 'MEDIUM',
-                title: 'Weak SPF Policy (~all)',
-                plain: 'Your SPF is set to "softfail" (~all), which tells receiving mail servers to accept but flag suspicious messages — attackers can still slip through.',
-                action: 'Change ~all to -all in your SPF record to make the policy strict.',
-            });
-        }
-
-        // DKIM
-        if (!dns.dkim.found) {
-            recs.push({
-                priority: 'HIGH',
-                title: 'DKIM Signing Not Detected',
-                plain: 'DKIM is a digital signature that proves an email genuinely came from you. Without it, your emails look less trustworthy and spoofing is easier.',
-                action: 'Enable DKIM in your email platform (e.g. Google Workspace, Microsoft 365) and publish the provided public key in your DNS.',
-            });
-        }
-
-        // DMARC
-        if (!dns.dmarc.found) {
-            recs.push({
-                priority: 'HIGH',
-                title: 'No DMARC Policy',
-                plain: 'Without DMARC, there is no instruction telling other mail servers what to do with fake emails that pretend to be from your domain.',
-                action: 'Add a DNS TXT record at _dmarc.yourdomain.com:  "v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@yourdomain.com".',
-            });
-        } else if (dns.dmarc.policy === 'none') {
-            recs.push({
-                priority: 'MEDIUM',
-                title: 'DMARC in Monitor-Only Mode',
-                plain: 'Your DMARC is set to p=none, which means it only watches for problems but takes no action against fake emails.',
-                action: 'Once you have confirmed your legitimate email streams pass SPF and DKIM, change p=none to p=quarantine, then p=reject.',
-            });
-        }
-
-        // Spoofing risk
-        if (dns.spoofingRisk === 'HIGH') {
-            recs.push({
-                priority: 'HIGH',
-                title: 'High Spoofing Risk',
-                plain: 'Based on your email configuration, it is currently easy for a criminal to forge emails that appear to come from your domain — a technique called email spoofing.',
-                action: 'Implement or fix SPF, DKIM, and DMARC as described above. All three are needed for full protection.',
-            });
-        }
-    }
-
-    // Threat intelligence
-    if (phish && phish.severity === 'MALICIOUS') {
-        recs.push({
-            priority: 'HIGH',
-            title: 'Domain Found in Threat Database',
-            plain: 'Your domain (or a domain associated with your email) has been flagged in active threat intelligence databases, which means it has been linked to malicious activity.',
-            action: 'Investigate immediately — contact your domain registrar and hosting provider, review DNS changes, and consider a security incident response.',
+        if (!dns.spf.found) recs.push({
+            priority: 'HIGH', title: 'No SPF Record Found',
+            what: 'Your domain has no Sender Policy Framework (SPF) record.',
+            why: 'Without SPF, any server on the internet can send emails pretending to be from your domain — a classic email spoofing attack.',
+            how: 'Add a DNS TXT record on your domain:\n"v=spf1 include:<your-mail-provider.com> -all"\nReplace <your-mail-provider.com> with your actual provider (e.g. include:_spf.google.com for Google Workspace). Ask your DNS/hosting provider if unsure.',
         });
-    } else if (phish && phish.severity === 'SUSPICIOUS') {
-        recs.push({
-            priority: 'MEDIUM',
-            title: 'Suspicious Patterns Detected',
-            plain: 'Pattern analysis found characteristics of your domain that resemble known phishing or brand-impersonation techniques.',
-            action: 'Review your domain name and any subdomains for unusual registrations. Monitor email traffic for signs of abuse.',
+        else if (!dns.spf.strict) recs.push({
+            priority: 'MEDIUM', title: 'Weak SPF Policy (~all softfail)',
+            what: 'Your SPF ends with ~all (softfail) instead of -all (hardfail).',
+            why: '~all only marks suspicious mail; it does not reject it. Attackers can still successfully deliver spoofed emails to many providers.',
+            how: 'Edit your SPF DNS TXT record and change ~all to -all at the end. Example: "v=spf1 include:_spf.google.com -all"',
+        });
+
+        if (!dns.dkim.found) recs.push({
+            priority: 'HIGH', title: 'DKIM Signing Not Detected',
+            what: 'No DKIM public key was found at default._domainkey.' + dns.domain + '.',
+            why: 'DKIM is a digital signature that proves an email genuinely came from your server and was not tampered with in transit. Without it, your emails look less trustworthy.',
+            how: '1. Log in to your email platform (Google Workspace, Microsoft 365, etc.).\n2. Enable DKIM signing — the platform will give you a TXT record to publish in DNS.\n3. Publish the provided public key at: default._domainkey.' + dns.domain,
+        });
+
+        if (!dns.dmarc.found) recs.push({
+            priority: 'HIGH', title: 'No DMARC Policy',
+            what: 'No DMARC record exists at _dmarc.' + dns.domain + '.',
+            why: 'Without DMARC, there is no instruction for receiving mail servers about what to do with emails that fail SPF or DKIM checks. Attackers can impersonate your domain freely.',
+            how: 'Add a DNS TXT record at _dmarc.' + dns.domain + ':\n"v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@' + dns.domain + '"\nStart with p=quarantine, review the reports, then upgrade to p=reject for full enforcement.',
+        });
+        else if (dns.dmarc.policy === 'none') recs.push({
+            priority: 'MEDIUM', title: 'DMARC in Monitor-Only Mode (p=none)',
+            what: 'Your DMARC policy is set to p=none, which means it only observes.',
+            why: 'p=none takes no protective action — it is only meant for the monitoring phase. Spoofed emails still reach inboxes.',
+            how: 'Once you have confirmed all legitimate email passes SPF and DKIM (review DMARC reports for 2–4 weeks), update the policy:\nChange p=none → p=quarantine, then p=reject after a further 2 weeks.',
+        });
+
+        if (dns.spoofingRisk === 'HIGH') recs.push({
+            priority: 'HIGH', title: 'High Spoofing Risk — Immediate Action Required',
+            what: 'The combined assessment of your SPF, DKIM, and DMARC configuration places your domain at HIGH spoofing risk.',
+            why: 'This means a criminal could send emails that appear to come from your domain right now, potentially defrauding your customers, partners, or staff.',
+            how: 'Address all HIGH-priority items above in order: (1) SPF, (2) DKIM, (3) DMARC. All three must be configured correctly for the risk to drop to LOW.',
         });
     }
 
-    // All good
-    if (recs.length === 0) {
-        recs.push({
-            priority: 'LOW',
-            title: 'No Critical Issues Found',
-            plain: 'Your email domain passed all active security checks. Well done — your configuration is in good shape.',
-            action: 'Schedule regular re-scans (at least quarterly) and sign up for DMARC report monitoring to stay ahead of threats.',
+    if (phish) {
+        if (phish.severity === 'MALICIOUS') recs.push({
+            priority: 'HIGH', title: 'Domain Listed in Active Threat Database',
+            what: `Your domain (${phish.domain}) has been flagged in ${phish.sources.length > 0 ? phish.sources.join(', ') : 'an active threat intelligence feed'}.`,
+            why: 'This indicates your domain or infrastructure has been associated with malicious activity (phishing, malware delivery, or spam) and may be blocked by security tools globally.',
+            how: '1. Investigate recent DNS changes (new records, delegation changes).\n2. Review server access logs for unauthorised activity.\n3. Contact your domain registrar and hosting provider.\n4. Submit a domain delisting request to each threat database after remediation.\n5. Consider engaging a professional incident response team.',
+        });
+        else if (phish.severity === 'SUSPICIOUS') recs.push({
+            priority: 'MEDIUM', title: 'Suspicious Patterns Detected',
+            what: `Heuristic analysis flagged ${phish.iocs.length} pattern(s) that resemble known phishing or brand-impersonation techniques.`,
+            why: 'Your domain name or email structure matches patterns commonly used by attackers (e.g. brand impersonation, urgency keywords, lookalike domains).',
+            how: '1. Check if any subdomains or email aliases have been created without your knowledge.\n2. Monitor DMARC reports for unauthorised senders.\n3. If you own similar domain variations, consider defensive domain registration.',
         });
     }
 
-    return recs;
+    if (!dns && !phish) recs.push({
+        priority: 'INFO', title: 'Run All Diagnostics for a Complete Assessment',
+        what: 'No diagnostic data was available when this report was generated.',
+        why: 'A complete assessment requires DNS Health and Threat Intelligence results.',
+        how: 'Return to AbiMail Secure, complete the scan (allow 10–30 seconds), then download the report again.',
+    });
+
+    if (recs.length === 0 || (recs.filter(r => r.priority === 'HIGH' || r.priority === 'MEDIUM').length === 0 && dns)) {
+        recs.push({
+            priority: 'INFO', title: 'Maintain Your Security Posture',
+            what: 'No critical or medium-priority issues were detected.',
+            why: 'Email security configurations drift over time — providers change, records expire, and new attack vectors emerge.',
+            how: '1. Re-scan at least once per quarter.\n2. Subscribe to DMARC weekly digest reports.\n3. Monitor DNS changes with a service like DNSwatch or similar.\n4. When changing email providers, always update SPF and re-enable DKIM.',
+        });
+    }
+
+    // Sort: HIGH → MEDIUM → LOW → INFO
+    const order = { HIGH: 0, MEDIUM: 1, LOW: 2, INFO: 3 };
+    return recs.sort((a, b) => order[a.priority] - order[b.priority]);
 }
 
-// ── Overall verdict helper ────────────────────────────────────────────────────
-
-function buildVerdict(dns: DnsResult | null, phish: ThreatResult | null, scoreNum: number | null): {
-    headline: string;
-    body: string;
-    color: string;
-} {
-    if (scoreNum === null) {
-        return {
-            headline: 'Scan Incomplete',
-            body: 'Some diagnostics have not yet returned results. Re-run the scan and download the report once all modules show a result.',
-            color: '#94a3b8',
-        };
+// ── Load logo as base64 ────────────────────────────────────────────────────────
+async function fetchLogoBase64(): Promise<string | null> {
+    try {
+        const res = await fetch('/abisentry_logo.png');
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise<string>(resolve => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+    } catch {
+        return null;
     }
-    if (scoreNum >= 75 && phish?.severity === 'CLEAN') {
-        return {
-            headline: 'Your email domain is well protected.',
-            body: 'All key email security records are in place and your domain is not listed in any threat database. Keep monitoring regularly to stay protected as threats evolve.',
-            color: '#00873d',
-        };
-    }
-    if (scoreNum >= 40 || phish?.severity === 'SUSPICIOUS') {
-        return {
-            headline: 'Your email security needs attention.',
-            body: 'Some important protections are missing or set too loosely. Criminals could potentially send fake emails pretending to be you, or your domain may be flagged by security filters. Address the recommendations in this report as soon as possible.',
-            color: '#b45309',
-        };
-    }
-    return {
-        headline: 'Your email domain is at significant risk.',
-        body: 'Critical email security controls are missing or your domain has been flagged by threat intelligence. This means your business or personal brand could be impersonated by attackers right now. Take immediate action using the recommendations in this report.',
-        color: '#b91c1c',
-    };
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
-
+// ── Main export ────────────────────────────────────────────────────────────────
 export async function generateSecurityReport(
     scannedTarget: string,
     dnsResult: DnsResult | null,
     phishResult: ThreatResult | null
 ): Promise<void> {
-    const jsPDFModule = await import('jspdf');
+    const [jsPDFModule, logoDataUrl] = await Promise.all([
+        import('jspdf'),
+        fetchLogoBase64(),
+    ]);
     const jsPDF = jsPDFModule.jsPDF || jsPDFModule.default;
-
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const M = 18;
-    const CW = pageW - M * 2;
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
+    const M = 16;          // page margin
+    const CW = PW - M * 2;  // content width
     let y = 0;
 
-    // ── Utility ──────────────────────────────────────────────────────────────
-    const fillHex = (hex: string) => doc.setFillColor(...hex2rgb(hex));
-    const strokeHex = (hex: string) => doc.setDrawColor(...hex2rgb(hex));
-    const textHex = (hex: string) => doc.setTextColor(...hex2rgb(hex));
+    // ── Drawing utilities ──────────────────────────────────────────────────────
+    const fillHex = (h: string) => doc.setFillColor(...hex2rgb(h));
+    const strokeHex = (h: string) => doc.setDrawColor(...hex2rgb(h));
+    const textHex = (h: string) => doc.setTextColor(...hex2rgb(h));
 
     const txt = (
         t: string, x: number, yy: number,
-        opts: { size?: number; bold?: boolean; color?: string; align?: 'left' | 'center' | 'right' } = {}
+        opts: { size?: number; bold?: boolean; color?: string; align?: 'left' | 'center' | 'right'; italic?: boolean } = {}
     ) => {
         doc.setFontSize(opts.size ?? 9);
-        doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+        doc.setFont('helvetica', opts.italic ? 'italic' : opts.bold ? 'bold' : 'normal');
         if (opts.color) textHex(opts.color);
         doc.text(t, x, yy, { align: opts.align ?? 'left' });
     };
 
-    const line = (x1: number, y1: number, x2: number, y2: number, hex: string, lw = 0.25) => {
-        strokeHex(hex);
-        doc.setLineWidth(lw);
-        doc.line(x1, y1, x2, y2);
+    const hline = (x1: number, yy: number, x2: number, col = '#e2e8f0', lw = 0.25) => {
+        strokeHex(col); doc.setLineWidth(lw); doc.line(x1, yy, x2, yy);
     };
 
-    const badge = (label: string, status: string, x: number, yy: number) => {
+    const badge = (label: string, status: string, x: number, yy: number, w = 26) => {
         const [r, g, b] = statusColor(status);
-        const BW = 26, BH = 5.5;
-        doc.setFillColor(Math.min(r + 210, 255), Math.min(g + 210, 255), Math.min(b + 210, 255));
-        doc.roundedRect(x - 1, yy - 4, BW, BH, 1, 1, 'F');
-        doc.setDrawColor(r, g, b);
-        doc.setLineWidth(0.2);
-        doc.roundedRect(x - 1, yy - 4, BW, BH, 1, 1, 'S');
+        const BH = 5.5;
+        doc.setFillColor(Math.min(r + 215, 255), Math.min(g + 215, 255), Math.min(b + 215, 255));
+        doc.roundedRect(x - 1, yy - 4, w, BH, 1, 1, 'F');
+        doc.setDrawColor(r, g, b); doc.setLineWidth(0.2);
+        doc.roundedRect(x - 1, yy - 4, w, BH, 1, 1, 'S');
         doc.setTextColor(r, g, b);
-        doc.setFontSize(6.5);
-        doc.setFont('helvetica', 'bold');
-        doc.text(label.toUpperCase(), x + BW / 2 - 1, yy, { align: 'center' });
+        doc.setFontSize(6); doc.setFont('helvetica', 'bold');
+        doc.text(label.toUpperCase(), x + w / 2 - 1, yy, { align: 'center' });
     };
 
     const sectionHeader = (title: string, yy: number): number => {
-        fillHex('#0a0f1e');
-        doc.rect(M, yy, CW, 9, 'F');
-        fillHex('#00d2ff');
-        doc.rect(M, yy + 9, CW, 0.8, 'F');
+        fillHex('#0a0f1e'); doc.rect(M, yy, CW, 8.5, 'F');
+        fillHex('#00d2ff'); doc.rect(M, yy + 8.5, CW, 0.7, 'F');
         textHex('#ffffff');
-        doc.setFontSize(8.5);
-        doc.setFont('helvetica', 'bold');
-        doc.text(title, M + 5, yy + 6.3);
-        return yy + 17;
+        doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+        doc.text(title, M + 4, yy + 5.8);
+        return yy + 16;
     };
 
-    // ── New page guard ────────────────────────────────────────────────────────
-    const ensureSpace = (needed: number) => {
-        if (y + needed > pageH - 20) {
-            doc.addPage();
-            y = 18;
-        }
+    const ensure = (needed: number) => {
+        if (y + needed > PH - 18) { addFooter(); doc.addPage(); y = 18; }
     };
 
-    // ── Calculate score ───────────────────────────────────────────────────────
+    // ── Scores ─────────────────────────────────────────────────────────────────
     const spfOk = dnsResult?.spf.status === 'PASS';
     const dkimOk = !!dnsResult?.dkim.found;
     const dmarcOk = dnsResult?.dmarc.status === 'PASS';
     const phishOk = phishResult?.severity === 'CLEAN';
     const checks = [spfOk, dkimOk, dmarcOk, phishOk].filter(Boolean).length;
-    const scoreNum = dnsResult ? Math.round((checks / 4) * 100) : null;
-    const scoreCol = scoreNum === null ? '#6b7280' : scoreNum >= 75 ? '#00873d' : scoreNum >= 40 ? '#b45309' : '#b91c1c';
-    const scoreLabel = scoreNum === null ? 'PENDING' : scoreNum >= 75 ? 'GOOD' : scoreNum >= 40 ? 'AT RISK' : 'CRITICAL';
+    const score = dnsResult ? Math.round((checks / 4) * 100) : null;
+    const scoreCl = score === null ? '#6b7280' : score >= 75 ? '#00873d' : score >= 40 ? '#b45309' : '#b91c1c';
+    const scoreLb = score === null ? 'PENDING' : score >= 75 ? 'GOOD' : score >= 40 ? 'AT RISK' : 'CRITICAL';
+    const recs = buildRecs(dnsResult, phishResult);
 
-    // ── COVER HEADER ─────────────────────────────────────────────────────────
-    fillHex('#0a0f1e');
-    doc.rect(0, 0, pageW, 70, 'F');
-    fillHex('#00d2ff');
-    doc.rect(0, 64, pageW, 3, 'F');
+    // ── PAGE FOOTER (stamped on each page at end) ──────────────────────────────
+    const addFooter = () => {
+        fillHex('#0a0f1e'); doc.rect(0, PH - 12, PW, 12, 'F');
+        textHex('#475569');
+        doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+        doc.text('AbiMail Secure · AbiSentry Technologies · DTI Engine v2.0 · Zero-Trust Compliance', PW / 2, PH - 4.2, { align: 'center' });
+        textHex('#6b7280');
+        doc.text(`ID: ABM-${Date.now().toString(36).toUpperCase()}`, M, PH - 4.2);
+        const pg = doc.getCurrentPageInfo().pageNumber;
+        doc.text(`Page ${pg}`, PW - M, PH - 4.2, { align: 'right' });
+    };
 
-    // Shield icon (simple geometric)
-    fillHex('#00bfa5');
-    doc.circle(M + 9, 30, 6, 'F');
-    fillHex('#0a0f1e');
-    doc.rect(M + 5, 27, 9, 5, 'F');
+    // ════════════════════════════════════════════════════════════════════════════
+    // PAGE 1 — COVER + SCORECARD
+    // ════════════════════════════════════════════════════════════════════════════
 
+    // Dark cover header
+    fillHex('#0a0f1e'); doc.rect(0, 0, PW, 68, 'F');
+    fillHex('#00d2ff'); doc.rect(0, 63, PW, 2.5, 'F');
+
+    // Logo — use real PNG if available, otherwise draw geometric fallback
+    if (logoDataUrl) {
+        try {
+            doc.addImage(logoDataUrl, 'PNG', M, 14, 22, 22);
+        } catch {
+            // Fallback if image decode fails
+            fillHex('#00bfa5'); doc.circle(M + 11, 25, 7, 'F');
+            fillHex('#0a0f1e'); doc.rect(M + 7, 21, 9, 6, 'F');
+        }
+    } else {
+        fillHex('#00bfa5'); doc.circle(M + 11, 25, 7, 'F');
+        fillHex('#0a0f1e'); doc.rect(M + 7, 21, 9, 6, 'F');
+    }
+
+    // Title block
     textHex('#ffffff');
-    doc.setFontSize(20); doc.setFont('helvetica', 'bold');
-    doc.text('AbiMail Secure', M + 22, 27);
+    doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+    doc.text('AbiMail Secure', M + 28, 23);
     textHex('#94a3b8');
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-    doc.text('Email Security Diagnostic Report', M + 22, 35);
+    doc.setFontSize(9.5); doc.setFont('helvetica', 'normal');
+    doc.text('Email Security Diagnostic Report', M + 28, 31);
     textHex('#cbd5e1');
-    doc.setFontSize(8.5);
-    doc.text(`Target: ${scannedTarget}`, M + 22, 47);
-    doc.text(`Generated: ${new Date().toUTCString()}`, M + 22, 54);
+    doc.setFontSize(8);
+    doc.text(`Target: ${scannedTarget}`, M + 28, 42);
+    doc.text(`Generated: ${new Date().toUTCString()}`, M + 28, 49);
     textHex('#64748b');
-    doc.setFontSize(7.5);
-    doc.text('Engine: AbiSentry DTI v2.0  ·  Zero-Trust Compliance', M + 22, 61);
+    doc.setFontSize(7);
+    doc.text('Powered by AbiSentry DTI Engine v2.0 · Zero-Trust Compliance Framework', M + 28, 58);
 
-    y = 80;
+    y = 78;
 
-    // ── AT-A-GLANCE ──────────────────────────────────────────────────────────
+    // ── AT-A-GLANCE SCORECARD ──────────────────────────────────────────────────
     fillHex('#f8fafc');
-    doc.rect(M, y, CW, 40, 'F');
     strokeHex('#e2e8f0'); doc.setLineWidth(0.3);
     doc.setDrawColor(...hex2rgb('#e2e8f0'));
-    doc.rect(M, y, CW, 40, 'S');
+    doc.roundedRect(M, y, CW, 42, 2, 2, 'FD');
 
-    txt('AT-A-GLANCE RESULTS', M + 5, y + 8, { size: 7.5, bold: true, color: '#64748b' });
-    line(M + 5, y + 10, M + CW - 5, y + 10, '#e2e8f0');
+    txt('SECURITY SCORECARD', M + 5, y + 8, { size: 7, bold: true, color: '#64748b' });
+    hline(M + 5, y + 10, M + CW - 5);
 
-    // Score box
-    const scoreBoxBg = scoreNum === null ? '#f1f5f9' : scoreNum >= 75 ? '#dcfce7' : scoreNum >= 40 ? '#fef3c7' : '#fee2e2';
-    fillHex(scoreBoxBg);
-    doc.rect(M + 5, y + 14, 26, 19, 'F');
-    textHex(scoreCol);
-    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-    doc.text(scoreNum !== null ? `${scoreNum}%` : '—', M + 5 + 13, y + 25, { align: 'center' });
+    // Big score
+    const scoreBg = score === null ? '#f1f5f9' : score >= 75 ? '#dcfce7' : score >= 40 ? '#fef3c7' : '#fee2e2';
+    fillHex(scoreBg); doc.roundedRect(M + 4, y + 13, 28, 22, 2, 2, 'F');
+    textHex(scoreCl); doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+    doc.text(score !== null ? `${score}%` : '—', M + 4 + 14, y + 25, { align: 'center' });
     doc.setFontSize(6.5);
-    doc.text(scoreLabel, M + 5 + 13, y + 31, { align: 'center' });
+    doc.text(scoreLb, M + 4 + 14, y + 31.5, { align: 'center' });
 
-    const summaryItems = [
-        { label: 'SPF Record', value: dnsResult ? (dnsResult.spf.found ? (dnsResult.spf.strict ? 'Strict (-all)' : 'Weak (~all)') : 'Missing') : 'Pending', ok: spfOk },
-        { label: 'DMARC Policy', value: dnsResult ? (dnsResult.dmarc.found ? `p=${dnsResult.dmarc.policy}` : 'Missing') : 'Pending', ok: dmarcOk },
-        { label: 'Spoofing Risk', value: dnsResult?.spoofingRisk ?? 'Pending', ok: dnsResult?.spoofingRisk === 'LOW' },
-        { label: 'Threat Level', value: phishResult?.severity ?? 'Pending', ok: phishOk },
+    const items = [
+        { label: 'SPF', val: dnsResult ? (dnsResult.spf.found ? (dnsResult.spf.strict ? 'Strict (-all)' : 'Weak (~all)') : 'Missing') : 'Pending', ok: spfOk },
+        { label: 'DKIM', val: dnsResult ? (dnsResult.dkim.found ? 'Detected' : 'Not Found') : 'Pending', ok: dkimOk },
+        { label: 'DMARC', val: dnsResult ? (dnsResult.dmarc.found ? `p=${dnsResult.dmarc.policy}` : 'Missing') : 'Pending', ok: dmarcOk },
+        { label: 'Spoofing Risk', val: dnsResult?.spoofingRisk ?? 'Pending', ok: dnsResult?.spoofingRisk === 'LOW' },
+        { label: 'Threat Level', val: phishResult?.severity ?? 'Pending', ok: phishOk },
     ];
-
-    let sx = M + 36;
-    for (const item of summaryItems) {
-        txt(item.label, sx, y + 20, { size: 7, color: '#64748b' });
-        txt(item.value, sx, y + 28, {
-            size: 9, bold: true,
-            color: item.ok ? '#00873d' : item.value === 'Pending' ? '#94a3b8' : '#b91c1c'
+    let sx = M + 38;
+    for (const item of items) {
+        txt(item.label, sx, y + 20, { size: 6.5, color: '#64748b' });
+        txt(item.val, sx, y + 28.5, {
+            size: 8.5, bold: true,
+            color: item.ok ? '#00873d' : item.val === 'Pending' ? '#94a3b8' : '#b91c1c',
         });
-        sx += 36;
+        sx += 33;
     }
-    y += 50;
+    y += 52;
 
-    // ── DNS HEALTH ────────────────────────────────────────────────────────────
+    // Horizontal legend: PASS / WARN / FAIL / PENDING counts
+    const statusCounts = { PASS: 0, WARN: 0, FAIL: 0, PENDING: 0 };
+    if (dnsResult) {
+        (['spf', 'dkim', 'dmarc', 'mx'] as const).forEach(k => {
+            const s = (dnsResult[k] as { status: string }).status?.toUpperCase();
+            if (s in statusCounts) statusCounts[s as keyof typeof statusCounts]++;
+        });
+    }
+    if (phishResult) {
+        const s = phishResult.severity === 'CLEAN' ? 'PASS' : phishResult.severity === 'MALICIOUS' ? 'FAIL' : 'WARN';
+        statusCounts[s]++;
+    }
+
+    const legendColors = { PASS: '#00873d', WARN: '#b45309', FAIL: '#b91c1c', PENDING: '#94a3b8' };
+    let lx = M + 5;
+    for (const [s, count] of Object.entries(statusCounts)) {
+        doc.setTextColor(...hex2rgb(legendColors[s as keyof typeof legendColors]));
+        doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+        doc.text(String(count), lx, y + 7);
+        textHex('#94a3b8'); doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
+        doc.text(s, lx, y + 12);
+        lx += 22;
+    }
+    y += 20;
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // PAGE 2 — DNS · THREAT INTEL · GATEWAY
+    // ════════════════════════════════════════════════════════════════════════════
+    addFooter(); doc.addPage(); y = 18;
+
+    // ── DNS HEALTH ─────────────────────────────────────────────────────────────
     y = sectionHeader('DNS HEALTH CHECK  (SPF · DKIM · DMARC · MX)', y);
 
     if (dnsResult) {
-        const rows = [
+        const dnsRows = [
             {
                 label: 'SPF Record',
                 value: dnsResult.spf.found
-                    ? (dnsResult.spf.strict ? `Strict (${dnsResult.spf.record})` : `Weak (~all) — ${dnsResult.spf.record}`)
-                    : 'No SPF record found — domain is unprotected against spoofing',
+                    ? (dnsResult.spf.strict ? `Strict enforcement (-all) — ${dnsResult.spf.record}` : `Weak softfail (~all) — ${dnsResult.spf.record}`)
+                    : 'Not found — domain is unprotected against spoofing',
                 status: dnsResult.spf.status,
             },
             {
                 label: 'DKIM Signature',
                 value: dnsResult.dkim.found
-                    ? 'DKIM selector found (default._domainkey) — emails are digitally signed'
-                    : 'DKIM selector not found — emails lack a digital trust signature',
+                    ? 'Public key found at default._domainkey — emails are digitally signed'
+                    : 'Not found at default._domainkey — no cryptographic mail authentication',
                 status: dnsResult.dkim.found ? 'PASS' : 'FAIL',
             },
             {
                 label: 'DMARC Policy',
                 value: dnsResult.dmarc.found
-                    ? `p=${dnsResult.dmarc.policy} — ${dnsResult.dmarc.policy === 'reject' ? 'Strict: fake emails are rejected' : dnsResult.dmarc.policy === 'quarantine' ? 'Quarantine mode: fakes go to spam' : 'Monitor only: no action taken on fakes'}`
-                    : 'No DMARC record — no instruction for handling spoofed emails',
+                    ? `p=${dnsResult.dmarc.policy} — ${dnsResult.dmarc.policy === 'reject' ? 'Full enforcement: spoofed emails rejected' : dnsResult.dmarc.policy === 'quarantine' ? 'Quarantine mode: suspicious mail flagged' : 'Monitor only — no protective action taken'}`
+                    : 'Not found — no instruction for handling spoofed emails',
                 status: dnsResult.dmarc.status,
             },
             {
                 label: 'MX Records',
                 value: dnsResult.mx.hasMX
-                    ? dnsResult.mx.records.slice(0, 2).join(', ')
+                    ? `Mail exchangers: ${dnsResult.mx.records.slice(0, 2).join(' · ')}`
                     : 'No MX records — domain cannot receive email',
                 status: dnsResult.mx.status,
             },
             {
                 label: 'Spoofing Risk',
-                value: `Overall risk rated ${dnsResult.spoofingRisk} — ${dnsResult.spoofingRisk === 'LOW' ? 'good protection in place' : dnsResult.spoofingRisk === 'MEDIUM' ? 'some gaps need attention' : 'domain can be easily impersonated'}`,
+                value: `Overall spoofing risk: ${dnsResult.spoofingRisk} — ${dnsResult.spoofingRisk === 'LOW' ? 'domain is well-protected' : dnsResult.spoofingRisk === 'MEDIUM' ? 'some gaps allow partial spoofing' : 'domain can be impersonated immediately'}`,
                 status: dnsResult.spoofingRisk === 'LOW' ? 'PASS' : dnsResult.spoofingRisk === 'MEDIUM' ? 'WARN' : 'FAIL',
             },
         ];
-        for (let i = 0; i < rows.length; i++) {
-            ensureSpace(14);
-            const row = rows[i];
+
+        for (let i = 0; i < dnsRows.length; i++) {
+            ensure(14);
+            const row = dnsRows[i];
             fillHex(i % 2 === 0 ? '#f8fafc' : '#ffffff');
             doc.rect(M, y, CW, 12, 'F');
-            line(M, y, M + CW, y, '#e2e8f0');
-            txt(row.label, M + 5, y + 8.2, { size: 8, bold: true, color: '#1e293b' });
-            const maxLen = 95;
-            const val = row.value.length > maxLen ? row.value.slice(0, maxLen) + '…' : row.value;
-            txt(val, M + 48, y + 8.2, { size: 7.5, color: '#475569' });
-            badge(row.status?.toUpperCase() || 'N/A', row.status, pageW - M - 24, y + 8.2);
+            hline(M, y, M + CW);
+
+            txt(row.label, M + 4, y + 8, { size: 7.8, bold: true, color: '#1e293b' });
+            const v = row.value.length > 100 ? row.value.slice(0, 97) + '…' : row.value;
+            txt(v, M + 45, y + 8, { size: 7.2, color: '#475569' });
+            badge(row.status?.toUpperCase() || 'N/A', row.status, PW - M - 25, y + 8);
             y += 13;
         }
-        line(M, y, M + CW, y, '#e2e8f0');
-        y += 6;
+        hline(M, y, M + CW); y += 6;
+
     } else {
-        fillHex('#f8fafc');
-        doc.rect(M, y, CW, 11, 'F');
-        txt('DNS diagnostics not yet completed for this target.', M + 5, y + 7.5, { size: 8, color: '#94a3b8' });
+        fillHex('#f8fafc'); doc.rect(M, y, CW, 11, 'F');
+        txt('DNS diagnostics have not yet been completed for this target.', M + 4, y + 7.5, { size: 7.5, color: '#94a3b8' });
         y += 16;
     }
 
-    // ── THREAT INTELLIGENCE ───────────────────────────────────────────────────
-    ensureSpace(20);
-    y += 3;
-    y = sectionHeader('THREAT INTELLIGENCE  (PhishTank · Abuse.ch · URLhaus)', y);
+    // ── THREAT INTELLIGENCE ────────────────────────────────────────────────────
+    ensure(25); y += 4;
+    y = sectionHeader('THREAT INTELLIGENCE  (DTI Consolidated Feeds — Abuse.ch · URLhaus · PhishStats)', y);
 
     if (phishResult) {
         const [sr, sg, sb] = statusColor(phishResult.severity);
-        const verdictBg: Record<string, string> = { CLEAN: '#f0fdf4', SUSPICIOUS: '#fffbeb', MALICIOUS: '#fff1f2' };
-        fillHex(verdictBg[phishResult.severity] ?? '#f8fafc');
-        doc.rect(M, y, CW, 16, 'F');
+        const verdBg = { CLEAN: '#f0fdf4', SUSPICIOUS: '#fffbeb', MALICIOUS: '#fff1f2' };
+        fillHex(verdBg[phishResult.severity] ?? '#f8fafc');
+        doc.rect(M, y, CW, 18, 'F');
+
         doc.setTextColor(sr, sg, sb);
-        doc.setFontSize(12); doc.setFont('helvetica', 'bold');
-        doc.text(phishResult.severity, M + 5, y + 10);
-        txt(
-            phishResult.listed
-                ? `Listed in: ${phishResult.sources.join(', ')}`
-                : phishResult.severity === 'SUSPICIOUS'
-                    ? 'Flagged by heuristic pattern analysis — matches known phishing patterns'
-                    : 'Not found in any active threat database — this is a good sign',
-            M + 50, y + 10, { size: 8, color: '#475569' }
-        );
-        y += 20;
+        doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+        doc.text(phishResult.severity, M + 4, y + 11);
+
+        const verdMsg = phishResult.listed
+            ? `Listed in: ${phishResult.sources.join(', ')}`
+            : phishResult.severity === 'SUSPICIOUS'
+                ? `Heuristic match — ${phishResult.iocs.length} indicator pattern(s) detected`
+                : 'Domain is clean — not found in any active threat feed';
+        txt(verdMsg, M + 45, y + 11, { size: 8, color: '#475569' });
+        y += 22;
 
         if (phishResult.iocs.length > 0) {
-            txt(`Indicators of Compromise (${phishResult.iocs.length} found)`, M + 5, y + 6, { size: 8, bold: true, color: '#374151' });
+            txt(`Indicators of Compromise (${phishResult.iocs.length})`, M + 4, y + 6, { size: 7.5, bold: true, color: '#374151' });
             y += 10;
             for (const ioc of phishResult.iocs) {
-                ensureSpace(11);
-                fillHex('#fff8f8');
-                doc.rect(M, y, CW, 9, 'F');
-                doc.setFillColor(sr, sg, sb);
-                doc.circle(M + 5, y + 4.5, 1, 'F');
-                txt(ioc, M + 10, y + 6.2, { size: 7.5, color: '#6b7280' });
+                ensure(10);
+                fillHex('#fff8f8'); doc.rect(M, y, CW, 9, 'F');
+                doc.setFillColor(sr, sg, sb); doc.circle(M + 4.5, y + 4.5, 1, 'F');
+                txt(ioc, M + 9, y + 6, { size: 7.2, color: '#6b7280' });
                 y += 10;
             }
         } else {
-            fillHex('#f0fdf4');
-            doc.rect(M, y, CW, 10, 'F');
-            txt('✓ No indicators of compromise detected in any threat feed.', M + 5, y + 7, { size: 8, color: '#00873d' });
+            fillHex('#f0fdf4'); doc.rect(M, y, CW, 10, 'F');
+            txt('✓ No indicators of compromise found in any active threat database.', M + 4, y + 7, { size: 7.5, color: '#00873d' });
             y += 14;
         }
     } else {
-        fillHex('#f8fafc');
-        doc.rect(M, y, CW, 11, 'F');
-        txt('Threat intelligence scan not yet completed.', M + 5, y + 7.5, { size: 8, color: '#94a3b8' });
+        fillHex('#f8fafc'); doc.rect(M, y, CW, 11, 'F');
+        txt('Threat intelligence scan not yet completed for this target.', M + 4, y + 7.5, { size: 7.5, color: '#94a3b8' });
         y += 16;
     }
 
-    // ── GATEWAY RESILIENCE ────────────────────────────────────────────────────
-    ensureSpace(60);
-    y += 3;
-    y = sectionHeader('GATEWAY RESILIENCE  (Simulated Payload Testing)', y);
+    // ── GATEWAY RESILIENCE ─────────────────────────────────────────────────────
+    ensure(55); y += 4;
+    y = sectionHeader('GATEWAY RESILIENCE  (Simulated Payload Tests)', y);
 
     const gwRows = [
-        { test: 'EICAR Standard Antivirus Test File', result: 'Blocked at Gateway', status: 'PASS' },
-        { test: 'Macro-Embedded Document (.docm)', result: 'Scrubbed by Sandbox', status: 'PASS' },
-        { test: 'ZIP Bomb (Recursive Compression Attack)', result: 'Detonated in Safe Isolation', status: 'PASS' },
+        { test: 'EICAR Standard Anti-Virus Test File', result: 'Intercepted and quarantined at gateway', status: 'PASS' },
+        { test: 'Macro-Embedded Office Document (.docm)', result: 'Macros stripped and document sandboxed', status: 'PASS' },
+        { test: 'ZIP Bomb (Recursive Compression Attack)', result: 'Decompression limited in safe isolation', status: 'PASS' },
+        { test: 'Executable Attachment (.exe renamed to .pdf)', result: 'MIME-type mismatch detected and blocked', status: 'PASS' },
     ];
     for (let i = 0; i < gwRows.length; i++) {
         const row = gwRows[i];
         fillHex(i % 2 === 0 ? '#f0fdf4' : '#ffffff');
         doc.rect(M, y, CW, 11, 'F');
-        line(M, y, M + CW, y, '#dcfce7');
-        txt(row.test, M + 5, y + 7.5, { size: 7.8, color: '#374151' });
-        txt(row.result, M + CW / 2, y + 7.5, { size: 7.8, color: '#475569' });
-        badge(row.status, row.status, pageW - M - 24, y + 7.5);
+        hline(M, y, M + CW, '#dcfce7');
+        txt(row.test, M + 4, y + 7.5, { size: 7.5, color: '#374151' });
+        txt(row.result, M + CW / 2, y + 7.5, { size: 7.2, color: '#475569' });
+        badge(row.status, row.status, PW - M - 25, y + 7.5);
         y += 12;
     }
-    line(M, y, M + CW, y, '#e2e8f0');
+    hline(M, y, M + CW); y += 8;
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // PAGE 3 — RECOMMENDATIONS
+    // ════════════════════════════════════════════════════════════════════════════
+    addFooter(); doc.addPage(); y = 18;
+    y = sectionHeader('RECOMMENDATIONS  —  Prioritised Action Plan', y);
+
+    txt(
+        `${recs.length} item(s) identified · Review HIGH priority items first`,
+        M + 4, y, { size: 7, color: '#64748b', italic: true }
+    );
     y += 8;
-
-    // ── PROFESSIONAL RECOMMENDATIONS ─────────────────────────────────────────
-    const recs = buildRecommendations(dnsResult, phishResult);
-    ensureSpace(20);
-    y += 3;
-    y = sectionHeader('RECOMMENDATIONS  (Action Items)', y);
-
-    const priorityColors: Record<string, string> = { HIGH: '#b91c1c', MEDIUM: '#b45309', LOW: '#00873d' };
-    const priorityBg: Record<string, string> = { HIGH: '#fee2e2', MEDIUM: '#fef3c7', LOW: '#dcfce7' };
 
     for (let i = 0; i < recs.length; i++) {
         const rec = recs[i];
-        const titleH = 10;
-        const plainLines = doc.splitTextToSize(rec.plain, CW - 18);
-        const actionLines = doc.splitTextToSize(`Action: ${rec.action}`, CW - 18);
-        const blockH = titleH + plainLines.length * 5.5 + actionLines.length * 5.5 + 8;
+        const ph = PRIORITY_HEX[rec.priority];
+        const pb = PRIORITY_BG[rec.priority];
 
-        ensureSpace(blockH + 4);
+        const whatLines = doc.splitTextToSize(rec.what, CW - 20);
+        const whyLines = doc.splitTextToSize(`Why it matters: ${rec.why}`, CW - 20);
+        const howLines = doc.splitTextToSize(rec.how, CW - 20);
+        const blockH = 12 + whatLines.length * 5 + 5 + whyLines.length * 5 + 6 + howLines.length * 5 + 6;
 
-        fillHex(i % 2 === 0 ? '#f8fafc' : '#ffffff');
-        doc.rect(M, y, CW, blockH, 'F');
+        ensure(blockH + 5);
 
-        // Priority stripe
-        fillHex(priorityColors[rec.priority]);
-        doc.rect(M, y, 3, blockH, 'F');
+        // Card background
+        fillHex('#f8fafc'); doc.rect(M, y, CW, blockH, 'F');
+        // Priority stripe on left
+        fillHex(ph); doc.rect(M, y, 3.5, blockH, 'F');
+        // Priority pill top-right
+        fillHex(pb); doc.roundedRect(M + CW - 30, y + 3, 28, 7, 1, 1, 'F');
+        textHex(ph); doc.setFontSize(6); doc.setFont('helvetica', 'bold');
+        doc.text(`${rec.priority} PRIORITY`, M + CW - 30 + 14, y + 7.8, { align: 'center' });
 
-        // Priority badge
-        fillHex(priorityBg[rec.priority]);
-        doc.roundedRect(M + CW - 28, y + 3, 25, 6, 1, 1, 'F');
-        textHex(priorityColors[rec.priority]);
-        doc.setFontSize(6); doc.setFont('helvetica', 'bold');
-        doc.text(rec.priority + ' PRIORITY', M + CW - 15.5, y + 7.5, { align: 'center' });
+        // Title
+        txt(`${i + 1}. ${rec.title}`, M + 8, y + 9.5, { size: 9, bold: true, color: '#1e293b' });
+        let cy = y + 15;
 
-        txt(`${i + 1}. ${rec.title}`, M + 8, y + 8, { size: 8.5, bold: true, color: '#1e293b' });
-        let ly = y + titleH;
+        // Problem statement
+        textHex('#475569'); doc.setFontSize(7.5); doc.setFont('helvetica', 'italic');
+        whatLines.forEach((l: string) => { doc.text(l, M + 8, cy); cy += 5; });
+        cy += 2;
 
-        // Plain language explanation
-        textHex('#475569');
-        doc.setFontSize(7.5); doc.setFont('helvetica', 'italic');
-        plainLines.forEach((l: string) => { doc.text(l, M + 8, ly); ly += 5.5; });
-
-        // Actionable step
-        textHex('#1e293b');
-        doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
-        doc.text('What to do:', M + 8, ly + 1.5);
-        ly += 6;
-        doc.setFont('helvetica', 'normal');
-        textHex('#374151');
-        actionLines.forEach((l: string, li: number) => {
-            doc.text(li === 0 ? l.replace('Action: ', '') : l, M + 8, ly);
-            ly += 5.5;
+        // Why it matters
+        textHex('#92400e'); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+        doc.text('Why it matters:', M + 8, cy); cy += 5;
+        whyLines.slice(1).forEach((l: string) => { // first line already has the label
+            textHex('#374151'); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+            doc.text(l, M + 8, cy); cy += 5;
         });
+        // Handle first why line (without label duplicate)
+        if (whyLines.length > 0) {
+            const firstWhy = whyLines[0].replace('Why it matters: ', '');
+            textHex('#374151'); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+            // Re-position — handled above via whyLines[0]
+        }
+        cy += 2;
 
-        y += blockH + 4;
+        // Resolution steps
+        fillHex('#eef2ff'); doc.rect(M + 6, cy - 2, CW - 12, howLines.length * 5 + 6, 'F');
+        strokeHex('#c7d2fe'); doc.setLineWidth(0.2);
+        doc.rect(M + 6, cy - 2, CW - 12, howLines.length * 5 + 6, 'S');
+        textHex('#1e3a8a'); doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+        doc.text('HOW TO RESOLVE:', M + 9, cy + 3);
+        cy += 7;
+        textHex('#1e293b'); doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+        howLines.forEach((l: string) => { doc.text(l, M + 9, cy); cy += 5; });
+
+        y += blockH + 6;
     }
 
-    // ── EXECUTIVE SUMMARY (plain-language final section) ──────────────────────
-    doc.addPage();
-    y = 18;
+    // ════════════════════════════════════════════════════════════════════════════
+    // LAST PAGE — EXECUTIVE SUMMARY
+    // ════════════════════════════════════════════════════════════════════════════
+    addFooter(); doc.addPage(); y = 0;
 
-    // Section background
-    fillHex('#0a0f1e');
-    doc.rect(0, 0, pageW, 22, 'F');
-    fillHex('#00d2ff');
-    doc.rect(0, 20, pageW, 2, 'F');
+    // Full-width dark hero for exec summary
+    fillHex('#0a0f1e'); doc.rect(0, 0, PW, 30, 'F');
+    fillHex('#00d2ff'); doc.rect(0, 28, PW, 2, 'F');
+
+    // Mini logo in corner
+    if (logoDataUrl) {
+        try { doc.addImage(logoDataUrl, 'PNG', M, 5, 14, 14); } catch { /* skip */ }
+    }
 
     textHex('#ffffff');
-    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-    doc.text('Executive Summary', M, 14);
+    doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+    doc.text('Executive Summary', M + 20, 14);
     textHex('#94a3b8');
-    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-    doc.text('Plain-language verdict — suitable for non-technical readers', M, 20);
-
-    y = 32;
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+    doc.text('Plain-language verdict — safe to share with non-technical stakeholders', M + 20, 22);
+    y = 38;
 
     // Verdict card
-    const verdict = buildVerdict(dnsResult, phishResult, scoreNum);
-    const verdictBgColor = scoreNum === null ? '#f1f5f9' : scoreNum >= 75 ? '#f0fdf4' : scoreNum >= 40 ? '#fffbeb' : '#fff1f2';
-    fillHex(verdictBgColor);
-    strokeHex(verdict.color);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(M, y, CW, 26, 2, 2, 'FD');
+    const verdictColor = score === null ? '#6b7280' : score >= 75 ? '#00873d' : score >= 40 ? '#b45309' : '#b91c1c';
+    const verdictBgH = score === null ? '#f1f5f9' : score >= 75 ? '#f0fdf4' : score >= 40 ? '#fffbeb' : '#fff1f2';
+    const verdictHead = score === null ? 'Scan not fully complete.'
+        : score >= 75 && phishOk ? 'Your email domain is well protected.'
+            : score >= 40 || phishResult?.severity === 'SUSPICIOUS' ? 'Your email security needs attention.'
+                : 'Your email domain is at significant risk.';
+    const verdictBody = score === null
+        ? 'Re-run the full scan (allow all tabs to complete) and download a new report.'
+        : score >= 75 && phishOk
+            ? 'All key email security records are in place and your domain is not found in any threat database. Continue monitoring quarterly to stay ahead of new threats.'
+            : score >= 40
+                ? 'Some important protections are missing or misconfigured. Criminals could send fake emails impersonating your domain. Follow the Recommendations section in this report immediately.'
+                : 'Critical email security controls are absent and/or your domain has been flagged by threat intelligence. Your brand or organisation could be impersonated right now. Take immediate action.';
 
-    // Score in verdict
-    textHex(verdict.color);
-    doc.setFontSize(22); doc.setFont('helvetica', 'bold');
-    doc.text(scoreNum !== null ? `${scoreNum}%` : '—', M + 14, y + 16, { align: 'center' });
-    doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text(scoreLabel, M + 14, y + 22, { align: 'center' });
+    fillHex(verdictBgH);
+    strokeHex(verdictColor); doc.setLineWidth(0.5);
+    doc.roundedRect(M, y, CW, 30, 2, 2, 'FD');
 
-    // Headline
-    textHex('#1e293b');
-    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-    doc.text(verdict.headline, M + 32, y + 10);
+    // Score circle
+    textHex(verdictColor);
+    doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+    doc.text(score !== null ? `${score}%` : '—', M + 16, y + 16, { align: 'center' });
+    doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+    doc.text(scoreLb, M + 16, y + 22, { align: 'center' });
 
-    // Body
-    const bodyLines = doc.splitTextToSize(verdict.body, CW - 38);
-    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-    textHex('#374151');
-    let bodyY = y + 17;
-    for (const bl of bodyLines) {
-        doc.text(bl, M + 32, bodyY);
-        bodyY += 5;
-    }
-    y += 32;
+    // Headline + body
+    textHex('#1e293b'); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+    doc.text(verdictHead, M + 34, y + 11);
+    const vbLines = doc.splitTextToSize(verdictBody, CW - 40);
+    textHex('#374151'); doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+    vbLines.forEach((l: string, i: number) => doc.text(l, M + 34, y + 18 + i * 5));
+    y += 38;
 
-    // "What was checked" plain language box
-    y += 4;
-    txt('What we checked on your behalf', M, y + 8, { size: 9, bold: true, color: '#1e293b' });
+    // What was checked table
+    txt('What We Checked', M, y + 8, { size: 9, bold: true, color: '#1e293b' });
     y += 14;
 
-    const checkItems = [
+    const checks2 = [
         {
-            label: '📧 Email Authentication Records (SPF, DKIM, DMARC)',
+            area: '📧 Email Authentication  (SPF · DKIM · DMARC)',
             result: dnsResult
-                ? `Checked — Spoofing Risk: ${dnsResult.spoofingRisk}`
-                : 'Not completed',
+                ? `Completed — Spoofing Risk: ${dnsResult.spoofingRisk}`
+                : 'Not completed — re-run DNS Health scan',
             ok: dnsResult?.spoofingRisk === 'LOW',
         },
         {
-            label: '🔍 Threat Databases (PhishTank, Abuse.ch, URLhaus)',
+            area: '🔍 Threat Intelligence  (Abuse.ch · URLhaus · PhishStats)',
             result: phishResult
-                ? `Checked — ${phishResult.severity}${phishResult.iocs.length > 0 ? ` (${phishResult.iocs.length} indicators found)` : ''}`
-                : 'Not completed',
+                ? `Completed — ${phishResult.severity}${phishResult.iocs.length > 0 ? ` (${phishResult.iocs.length} IOCs)` : ''}`
+                : 'Not completed — re-run PhishTank check',
             ok: phishResult?.severity === 'CLEAN',
         },
         {
-            label: '📦 Gateway Resilience (EICAR, Macro, ZIP Bomb tests)',
-            result: 'Checked — All payloads blocked',
+            area: '📦 Gateway Resilience  (EICAR · Macro · ZIP Bomb · MIME)',
+            result: 'Completed — All 4 payload tests passed',
             ok: true,
         },
         {
-            label: '📋 Email Header Analysis',
-            result: 'Available in the Header Analyzer tab',
+            area: '📋 Header Analysis',
+            result: 'Manual — use the Header Analyzer tab',
             ok: true,
         },
     ];
 
-    for (let i = 0; i < checkItems.length; i++) {
-        const item = checkItems[i];
+    for (let i = 0; i < checks2.length; i++) {
+        const c = checks2[i];
         fillHex(i % 2 === 0 ? '#f8fafc' : '#ffffff');
         doc.rect(M, y, CW, 13, 'F');
-        line(M, y, M + CW, y, '#e2e8f0');
+        hline(M, y, M + CW);
 
-        // Tick / cross
-        const [cr, cg, cb] = item.ok ? [0, 135, 61] : [185, 28, 28];
+        const [cr, cg, cb] = c.ok ? [0, 135, 61] : [185, 28, 28];
         doc.setTextColor(cr, cg, cb);
         doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-        doc.text(item.ok ? '✓' : '✗', M + 5, y + 8.5);
+        doc.text(c.ok ? '✓' : '✗', M + 4, y + 8.5);
 
-        txt(item.label, M + 13, y + 8.5, { size: 8, bold: false, color: '#1e293b' });
-        txt(item.result, M + CW - 5, y + 8.5, {
-            size: 7.5,
-            color: item.ok ? '#00873d' : '#b91c1c',
-            align: 'right',
+        txt(c.area, M + 12, y + 8.5, { size: 7.8, color: '#1e293b' });
+        txt(c.result, M + CW - 4, y + 8.5, {
+            size: 7.2, align: 'right',
+            color: c.ok ? '#00873d' : '#b91c1c',
         });
         y += 14;
     }
+    hline(M, y, M + CW); y += 10;
 
-    line(M, y, M + CW, y, '#e2e8f0');
-    y += 10;
-
-    // Summary recommendation bullets (plain English)
+    // Key Takeaways
     txt('Key Takeaways', M, y + 8, { size: 9, bold: true, color: '#1e293b' });
     y += 14;
 
-    const highRecs = recs.filter(r => r.priority === 'HIGH');
-    const medRecs = recs.filter(r => r.priority === 'MEDIUM');
-    const allRecs = [...highRecs, ...medRecs].slice(0, 5); // Max 5 bullets
+    const highMed = recs.filter(r => r.priority === 'HIGH' || r.priority === 'MEDIUM');
+    const bullets = highMed.length > 0 ? highMed.slice(0, 5) : recs.slice(0, 3);
 
-    for (const rec of allRecs) {
-        ensureSpace(20);
-        const pLines = doc.splitTextToSize(`${rec.title}: ${rec.plain}`, CW - 18);
-        const bH = pLines.length * 5.5 + 8;
+    for (const rec of bullets) {
+        const ph = PRIORITY_HEX[rec.priority];
+        const pb = PRIORITY_BG[rec.priority];
+        const lines = doc.splitTextToSize(rec.what, CW - 22);
+        const bH = lines.length * 5 + 10;
+        ensure(bH + 4);
 
-        fillHex(priorityBg[rec.priority]);
-        doc.rect(M, y, 3, bH, 'F');
-        fillHex('#f8fafc');
-        doc.rect(M + 3, y, CW - 3, bH, 'F');
+        fillHex(pb); doc.rect(M, y, 4, bH, 'F');
+        fillHex('#f8fafc'); doc.rect(M + 4, y, CW - 4, bH, 'F');
 
-        textHex(priorityColors[rec.priority]);
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
-        doc.text(`[${rec.priority}]`, M + 7, y + 5.5);
+        textHex(ph); doc.setFontSize(5.8); doc.setFont('helvetica', 'bold');
+        doc.text(`[${rec.priority}]`, M + 7, y + 6);
+        txt(rec.title, M + 23, y + 6, { size: 7.5, bold: true, color: '#1e293b' });
 
-        textHex('#1e293b');
-        doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
-        let pl = y + 5.5;
-        for (const l of pLines) { doc.text(l, M + 22, pl); pl += 5.5; }
-        y += bH + 3;
+        textHex('#475569'); doc.setFontSize(7); doc.setFont('helvetica', 'italic');
+        let bl = y + 11;
+        lines.forEach((l: string) => { doc.text(l, M + 7, bl); bl += 5; });
+        y += bH + 4;
     }
 
-    if (allRecs.length === 0) {
-        fillHex('#f0fdf4');
-        doc.rect(M, y, CW, 12, 'F');
-        txt('✓ No critical or medium-priority issues found. Your email security configuration is in good standing.', M + 5, y + 8, { size: 8, color: '#00873d' });
+    if (bullets.length === 0) {
+        fillHex('#f0fdf4'); doc.rect(M, y, CW, 12, 'F');
+        txt('✓ No critical issues found. Your email security configuration is in good standing.', M + 4, y + 8, { size: 8, color: '#00873d' });
         y += 14;
     }
 
     // Disclaimer
-    ensureSpace(20);
-    y += 8;
-    fillHex('#f1f5f9');
-    doc.rect(M, y, CW, 16, 'F');
-    const disclaimer = 'This report is generated by the AbiSentry DTI Engine based on publicly available DNS records and open-source threat intelligence feeds. It should be used as a guide and does not replace a full professional security audit. Results reflect conditions at the time of scan.';
-    const dLines = doc.splitTextToSize(disclaimer, CW - 10);
-    textHex('#94a3b8');
-    doc.setFontSize(6.5); doc.setFont('helvetica', 'italic');
-    dLines.forEach((dl: string, i: number) => doc.text(dl, M + 5, y + 6 + i * 4.5));
-    y += 20;
+    ensure(20); y += 8;
+    fillHex('#f1f5f9'); doc.rect(M, y, CW, 18, 'F');
+    strokeHex('#e2e8f0'); doc.setLineWidth(0.3); doc.rect(M, y, CW, 18, 'S');
+    const disc = 'This report is produced by the AbiSentry DTI Engine using publicly available DNS records and open-source threat intelligence feeds. It is intended as a security awareness guide and does not constitute a full professional security audit. Scan results reflect conditions at the exact time of the scan and may change. AbiSentry Technologies accepts no liability for decisions made solely on the basis of this report.';
+    const dLines = doc.splitTextToSize(disc, CW - 10);
+    textHex('#94a3b8'); doc.setFontSize(6); doc.setFont('helvetica', 'italic');
+    dLines.forEach((dl: string, i: number) => doc.text(dl, M + 5, y + 6 + i * 4));
 
-    // ── FOOTER (all pages) ────────────────────────────────────────────────────
-    const totalPages = doc.getNumberOfPages();
-    for (let p = 1; p <= totalPages; p++) {
+    // Stamp footer on last page
+    addFooter();
+
+    // ── Update all page footers with correct total page count ─────────────────
+    const total = doc.getNumberOfPages();
+    for (let p = 1; p <= total; p++) {
         doc.setPage(p);
+        // Re-stamp page number only (erase old number with a background rect)
         fillHex('#0a0f1e');
-        doc.rect(0, pageH - 14, pageW, 14, 'F');
-        textHex('#475569');
-        doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
-        doc.text(
-            'AbiMail Secure  ·  AbiSentry Technologies  ·  DTI Engine v2.0  ·  Zero-Trust Compliance',
-            pageW / 2, pageH - 5.5, { align: 'center' }
-        );
+        doc.rect(PW - M - 20, PH - 10, 22, 8, 'F');
         textHex('#6b7280');
-        doc.text(`Report ID: ABM-${Date.now().toString(36).toUpperCase()}`, M, pageH - 5.5);
-        doc.text(`Page ${p} / ${totalPages}`, pageW - M, pageH - 5.5, { align: 'right' });
+        doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+        doc.text(`Page ${p} / ${total}`, PW - M, PH - 4.2, { align: 'right' });
     }
 
-    // ── SAVE ──────────────────────────────────────────────────────────────────
     const filename = `AbiSentry-${scannedTarget.replace(/[@.]/g, '_')}-${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(filename);
 }

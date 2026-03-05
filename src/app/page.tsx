@@ -8,6 +8,7 @@ import { DnsHealthPanel } from '../components/DnsHealthPanel';
 import { HeaderAnalyzer } from '../components/HeaderAnalyzer';
 import { PhishTankPanel } from '../components/PhishTankPanel';
 import { RiskDashboard } from '../components/RiskDashboard';
+import { HowToUse } from '../components/HowToUse';
 import { generateSecurityReport } from '../lib/generateReport';
 
 
@@ -303,6 +304,9 @@ export default function Home() {
                     </div>
                 </section>
             )}
+
+            {/* How to Use — always visible, data-driven */}
+            <HowToUse />
 
             <footer style={{
                 padding: '1.75rem', textAlign: 'center',
