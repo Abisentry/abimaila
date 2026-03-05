@@ -10,7 +10,6 @@ import { PhishTankPanel } from '../components/PhishTankPanel';
 import { RiskDashboard } from '../components/RiskDashboard';
 import { HowToUse } from '../components/HowToUse';
 import { generateSecurityReport } from '../lib/generateReport';
-import PaystackPop from '@paystack/inline-js';
 
 
 type Tab = 'overview' | 'dns' | 'headers' | 'phishtank';
@@ -107,8 +106,9 @@ export default function Home() {
             return;
         }
 
-        // Initialize Paystack Payment
+        // Initialize Paystack Payment (dynamic import to prevent SSR window error)
         setIsProcessingPayment(true);
+        const { default: PaystackPop } = await import('@paystack/inline-js');
         const paystack = new PaystackPop();
         paystack.newTransaction({
             key: process.env.NEXT_PUBLIC_PAYSTACK_KEY || 'pk_test_replace_with_your_paystack_public_key',
